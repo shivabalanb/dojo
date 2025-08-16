@@ -2,6 +2,8 @@
 
 A full-stack blockchain project with frontend, smart contracts, and agent components.
 
+0x5FbDB2315678afecb367f032d93F642f64180aa3
+
 ## Project Structure
 
 ```

@@ -1,0 +1,127 @@
+'use client';
+
+import { useState } from 'react';
+import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { MarketFactoryABI, MARKET_FACTORY_ADDRESS } from '../lib/abis/MarketFactory';
+
+export function CreateMarket() {
+  const [question, setQuestion] = useState('');
+  const [duration, setDuration] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!question || !duration) return;
+
+    setIsLoading(true);
+    try {
+      const durationInSeconds = parseInt(duration) * 3600; // Convert hours to seconds
+      
+      writeContract({
+        address: MARKET_FACTORY_ADDRESS,
+        abi: MarketFactoryABI,
+        functionName: 'createMarket',
+        args: [question, BigInt(durationInSeconds)],
+      });
+    } catch (err) {
+      console.error('Error creating market:', err);
+    }
+    setIsLoading(false);
+  };
+
+  const resetForm = () => {
+    setQuestion('');
+    setDuration('');
+  };
+
+  return (
+    <div className="bg-white rounded-lg border shadow-sm p-6">
+      <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Market</h2>
+      
+      <form onSubmit={handleSubmit} className="space-y-4 text-black">
+        <div>
+          <label htmlFor="question" className="block text-sm font-medium text-gray-700 mb-2">
+            Market Question
+          </label>
+          <textarea
+            id="question"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="e.g., Will Bitcoin reach $100k by end of 2024?"
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
+            Duration (hours)
+          </label>
+          <input
+            type="number"
+            id="duration"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            placeholder="24"
+            min="1"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <p className="text-sm text-gray-500 mt-1">
+            How long the market stays open for betting
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          disabled={!question || !duration || isPending || isLoading}
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
+          {isPending || isLoading ? 'Creating...' : 'Create Market'}
+        </button>
+      </form>
+
+      {/* Transaction Status */}
+      {isPending && (
+        <div className="mt-4 text-sm text-blue-600">Transaction pending...</div>
+      )}
+      {isConfirming && (
+        <div className="mt-4 text-sm text-yellow-600">Confirming transaction...</div>
+      )}
+      {isConfirmed && (
+        <div className="mt-4 text-sm text-green-600">
+          Market created successfully!
+          <button
+            onClick={resetForm}
+            className="ml-2 text-blue-600 hover:text-blue-800 underline"
+          >
+            Create another
+          </button>
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 text-sm text-red-600">
+          Error: {error.message}
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="mt-6 p-4 bg-gray-50 rounded-md">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">How it works:</h3>
+        <ul className="text-sm text-gray-600 space-y-1">
+          <li>• Create a yes/no question about a future event</li>
+          <li>• Users can bet ETH on YES or NO outcomes</li>
+          <li>• After the duration expires, you can resolve the market</li>
+          <li>• Winners share the total pool proportionally</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
