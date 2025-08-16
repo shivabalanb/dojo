@@ -13,7 +13,7 @@ contract DeployMarketsScript is Script {
         vm.startBroadcast();
 
         factory = new MarketFactory();
-        
+
         console.log("MarketFactory deployed at:", address(factory));
 
         vm.stopBroadcast();
