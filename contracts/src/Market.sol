@@ -16,6 +16,7 @@ contract Market {
     uint256 public noPool;
     mapping(address => uint256) public yesStake;
     mapping(address => uint256) public noStake;
+    uint256 public marketIndex;
 
     modifier onlyOpen() {
         require(outcome == Outcome.Unresolved && block.timestamp < endTime, "closed");
@@ -27,7 +28,8 @@ contract Market {
         _;
     }
 
-    constructor(uint256 _endTime, address _resolver) {
+    constructor(uint256 _marketIndex, uint256 _endTime, address _resolver) {
+        marketIndex = _marketIndex;
         endTime = _endTime;
         resolver = _resolver;
     }

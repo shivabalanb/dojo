@@ -8,7 +8,7 @@ import { WalletStatus } from "../components/WalletStatus";
 
 export default function Home() {
   const { isConnected } = useAccount();
-
+  console.log("isConnected", isConnected);
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -33,10 +33,9 @@ export default function Home() {
             <div className="lg:col-span-2">
               <MarketList />
             </div>
-
             {/* Sidebar */}
             <div>
-              <WalletStatus />
+              {/* <WalletStatus /> */}
               <CreateMarket />
             </div>
           </div>

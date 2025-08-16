@@ -34,6 +34,7 @@ contract MarketFactory {
         uint256 endTime = block.timestamp + duration;
 
         Market newMarket = new Market(
+            markets.length, // Pass the current length as the market index
             endTime,
             msg.sender // Market creator becomes resolver
         );
