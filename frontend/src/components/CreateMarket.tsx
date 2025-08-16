@@ -4,23 +4,34 @@ import React, { useState, useEffect } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { readContract } from "wagmi/actions";
 import { config } from "../lib/wagmi";
+import { parseEther } from "viem";
 
-import {
-  MarketFactoryABI,
-  MARKET_FACTORY_ADDRESS,
-} from "../lib/abis/MarketFactory";
+import { MarketFactoryABI, MARKET_FACTORY_ADDRESS } from "../lib/abis";
 
 export function CreateMarket() {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState("Will the price of ETH go up?");
   const [durationInput, setDurationInput] = useState({
     days: "0",
     hours: "0",
-    minutes: "0",
+    minutes: "2",
     seconds: "0",
   });
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState("");
+
+  // New fields for initial liquidity
+  const [totalAmount, setTotalAmount] = useState("0.001");
+  const [yesPercentage, setYesPercentage] = useState(70);
+  const [creatorSide, setCreatorSide] = useState<"yes" | "no">("yes");
+
+  // Calculate amounts based on percentage
+  const yesAmount = totalAmount
+    ? ((yesPercentage / 100) * Number(totalAmount)).toFixed(4)
+    : "";
+  const noAmount = totalAmount
+    ? (((100 - yesPercentage) / 100) * Number(totalAmount)).toFixed(4)
+    : "";
 
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -45,14 +56,18 @@ export function CreateMarket() {
       });
 
       // The market index should be the count - 1 (since we just added a new market)
-      const marketIndex = Number(marketCount) -1 ;
+      const marketIndex = Number(marketCount) - 1;
 
       const marketData = {
         market_index: marketIndex,
         question: questionText,
       };
 
-      console.log("Storing market in database:", marketData);
+      console.log("🔍 Debug info:");
+      console.log("- Market count from factory:", Number(marketCount));
+      console.log("- Calculated market index:", marketIndex);
+      console.log("- Question text:", questionText);
+      console.log("- Full market data:", marketData);
 
       const response = await fetch("/api/markets", {
         method: "POST",
@@ -62,9 +77,15 @@ export function CreateMarket() {
         body: JSON.stringify(marketData),
       });
 
+      console.log("📡 API Response status:", response.status);
+      console.log(
+        "📡 API Response headers:",
+        Object.fromEntries(response.headers.entries())
+      );
+
       if (response.ok) {
         const result = await response.json();
-        console.log("Market stored in database:", result);
+        console.log("✅ Market stored in database:", result);
         setSuccessMessage("Market created and stored successfully!");
 
         // Reset form after successful creation
@@ -76,11 +97,28 @@ export function CreateMarket() {
             minutes: "0",
             seconds: "0",
           });
+          setTotalAmount("");
+          setYesPercentage(50);
+          setCreatorSide("yes");
           setSuccessMessage("");
         }, 3000);
       } else {
-        const errorData = await response.json();
-        console.error("Error storing market in database:", errorData);
+        console.log("❌ API Response not OK. Status:", response.status);
+        try {
+          const errorData = await response.json();
+          console.error("❌ Error storing market in database:", errorData);
+          console.error(
+            "❌ Full error details:",
+            JSON.stringify(errorData, null, 2)
+          );
+        } catch (jsonError) {
+          console.error(
+            "❌ Failed to parse error response as JSON:",
+            jsonError
+          );
+          const textResponse = await response.text();
+          console.error("❌ Raw error response:", textResponse);
+        }
         setSuccessMessage(
           "Market created on-chain but failed to store metadata"
         );
@@ -99,7 +137,13 @@ export function CreateMarket() {
       parseInt(durationInput.minutes || "0") * 60 +
       parseInt(durationInput.seconds || "0");
 
-    if (!question || totalDurationInSeconds <= 0) return;
+    if (
+      !question ||
+      totalDurationInSeconds <= 0 ||
+      !totalAmount ||
+      Number(totalAmount) <= 0
+    )
+      return;
 
     setIsLoading(true);
     setSuccessMessage(""); // Clear previous messages
@@ -107,13 +151,24 @@ export function CreateMarket() {
     // Store the values before they might be cleared
     const questionValue = question;
     const durationValue = totalDurationInSeconds;
+    const yesAmountWei = parseEther(yesAmount);
+    const noAmountWei = parseEther(noAmount);
+    const creatorChoseYes = creatorSide === "yes";
+    const creatorAmountWei = creatorChoseYes ? yesAmountWei : noAmountWei;
 
     try {
       writeContract({
         address: MARKET_FACTORY_ADDRESS,
         abi: MarketFactoryABI,
         functionName: "createMarket",
-        args: [question, BigInt(durationValue)],
+        args: [
+          question,
+          BigInt(durationValue),
+          yesAmountWei,
+          noAmountWei,
+          creatorChoseYes ? 1 : 2, // 1 = Yes, 2 = No (Outcome enum)
+        ],
+        value: creatorAmountWei,
       });
 
       // Set pending question - database storage will happen after transaction confirmation
@@ -226,6 +281,140 @@ export function CreateMarket() {
           <p className="text-sm text-gray-500 mt-1">
             Specify how long the market stays open for betting
           </p>
+        </div>
+
+        {/* Initial Liquidity Setup */}
+        <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+          <h3 className="text-lg font-medium text-gray-900">
+            Initial Liquidity Challenge
+          </h3>
+
+          {/* Your Side Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Your Position
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setCreatorSide("yes")}
+                className={`px-4 py-2 rounded-md border-2 transition-all ${
+                  creatorSide === "yes"
+                    ? "border-green-500 bg-green-50 text-green-700"
+                    : "border-gray-300 text-gray-700 hover:border-green-300"
+                }`}
+              >
+                YES
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreatorSide("no")}
+                className={`px-4 py-2 rounded-md border-2 transition-all ${
+                  creatorSide === "no"
+                    ? "border-red-500 bg-red-50 text-red-700"
+                    : "border-gray-300 text-gray-700 hover:border-red-300"
+                }`}
+              >
+                NO
+              </button>
+            </div>
+          </div>
+
+          {/* Total Pool Size */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Total Pool Size (ETH)
+            </label>
+            <input
+              type="number"
+              value={totalAmount}
+              onChange={(e) => setTotalAmount(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="1.0"
+              step="0.001"
+              min="0"
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Total liquidity that will be in the market
+            </p>
+          </div>
+
+          {/* Odds Slider */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Initial Odds
+            </label>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-4">
+                <span className="text-sm font-medium text-green-600 w-12">
+                  YES
+                </span>
+                <input
+                  type="range"
+                  min="10"
+                  max="90"
+                  value={yesPercentage}
+                  onChange={(e) => setYesPercentage(Number(e.target.value))}
+                  className="flex-1 h-2 bg-gradient-to-r from-green-200 via-yellow-200 to-red-200 rounded-lg appearance-none cursor-pointer slider"
+                  style={{
+                    background: `linear-gradient(to right, #10b981 0%, #10b981 ${yesPercentage}%, #ef4444 ${yesPercentage}%, #ef4444 100%)`,
+                  }}
+                />
+                <span className="text-sm font-medium text-red-600 w-12">
+                  NO
+                </span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>{yesPercentage}% YES</span>
+                <span>{100 - yesPercentage}% NO</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Amount Breakdown */}
+          <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
+            <div className="text-center">
+              <div className="text-sm font-medium text-gray-700">YES Pool</div>
+              <div className="text-lg font-bold text-green-600">
+                {yesAmount || "0"} ETH
+              </div>
+              {creatorSide === "yes" && (
+                <p className="text-xs text-green-600 mt-1">
+                  ← You&apos;ll pay this
+                </p>
+              )}
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-medium text-gray-700">NO Pool</div>
+              <div className="text-lg font-bold text-red-600">
+                {noAmount || "0"} ETH
+              </div>
+              {creatorSide === "no" && (
+                <p className="text-xs text-red-600 mt-1">
+                  ← You&apos;ll pay this
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Preview */}
+          {totalAmount && yesAmount && noAmount && (
+            <div className="p-3 bg-blue-50 rounded-md">
+              <p className="text-sm text-blue-800">
+                <strong>Challenge Preview:</strong> You&apos;ll bet{" "}
+                {creatorSide === "yes" ? yesAmount : noAmount} ETH on{" "}
+                {creatorSide.toUpperCase()}. Someone needs to bet{" "}
+                {creatorSide === "yes" ? noAmount : yesAmount} ETH on{" "}
+                {creatorSide === "yes" ? "NO" : "YES"} to activate this{" "}
+                {totalAmount} ETH market.
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                Market will start at {yesPercentage}% YES /{" "}
+                {100 - yesPercentage}% NO odds
+              </p>
+            </div>
+          )}
         </div>
 
         <button

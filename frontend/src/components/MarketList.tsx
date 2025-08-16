@@ -1,57 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React from "react";
 import { useReadContract } from "wagmi";
-import { MarketFactoryABI } from "../lib/abis";
+import { MarketFactoryABI, MARKET_FACTORY_ADDRESS } from "../lib/abis";
 import { MarketCard } from "./MarketCard";
-import { MARKET_FACTORY_ADDRESS } from "@/lib/abis/MarketFactory";
-
-interface MarketMetadata {
-  market_index: number;
-  question: string;
-}
+import { Hex } from "viem";
 
 export function MarketList() {
-  const [dbMarkets, setDbMarkets] = useState<MarketMetadata[]>([]);
-
   // Read all markets from the factory
   const {
     data: allMarkets,
     isLoading,
     refetch,
   } = useReadContract({
-    address: MARKET_FACTORY_ADDRESS as `0x${string}`,
+    address: MARKET_FACTORY_ADDRESS as Hex,
     abi: MarketFactoryABI,
     functionName: "getAllMarkets",
-  });
-
-  // Simple: fetch DB data once on mount
-  useEffect(() => {
-    fetch("/api/markets")
-      .then((res) => res.json())
-      .then((data) => {
-        // Ensure we always set an array
-        if (Array.isArray(data)) {
-          setDbMarkets(data);
-        } else {
-          console.error("API returned non-array data:", data);
-          setDbMarkets([]);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch markets:", err);
-        setDbMarkets([]);
-      });
-  }, []);
-
-  // Get question for a market index, fallback to generic title
-  const getMarketQuestion = (index: number): string => {
-    // Ensure dbMarkets is an array before calling find
-    if (!Array.isArray(dbMarkets)) {
-      return `Market ${index + 1}`;
-    }
-    const dbMarket = dbMarkets.find((market) => market.market_index === index);
-    return dbMarket ? dbMarket.question : `Market ${index + 1}`;
+  }) as {
+    data: Hex[] | undefined;
+    isLoading: boolean;
+    refetch: () => void;
   };
 
   return (
@@ -83,28 +51,9 @@ export function MarketList() {
           {allMarkets
             // .slice()
             // .reverse()
-            .map((marketAddress, index) => {
-              const question = getMarketQuestion(index);
-              const hasDbEntry = dbMarkets.some(
-                (market) => market.market_index === index
-              );
-
-              return (
-                <div key={marketAddress} className="relative">
-                  <MarketCard
-                    address={marketAddress as `0x${string}`}
-                    question={question}
-                  />
-                  {/* Visual indicator if data comes from DB */}
-                  {hasDbEntry && (
-                    <div
-                      className="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full"
-                      title="Has database entry"
-                    ></div>
-                  )}
-                </div>
-              );
-            })}
+            .map((marketAddress: `0x${string}`) => (
+              <MarketCard key={marketAddress} address={marketAddress} />
+            ))}
         </div>
       )}
     </div>

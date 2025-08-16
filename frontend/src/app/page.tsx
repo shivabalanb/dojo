@@ -4,7 +4,6 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { MarketList } from "../components/MarketList";
 import { CreateMarket } from "../components/CreateMarket";
-import { WalletStatus } from "../components/WalletStatus";
 
 export default function Home() {
   const { isConnected } = useAccount();

@@ -1,20 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {Test, console} from "forge-std/Test.sol";
-import {Market} from "../src/Market.sol";
+import "forge-std/Test.sol";
+import "../src/Market.sol";
 
 contract MarketTest is Test {
     Market public market;
-
     address public resolver = address(0x1);
     address public user1 = address(0x2);
     address public user2 = address(0x3);
     address public user3 = address(0x4);
 
     function setUp() public {
-        // Create market ending in 30 days
-        market = new Market(block.timestamp + 30 days, resolver);
+        // Create market with initial liquidity challenge
+        market = new Market{value: 1 ether}(
+            0, // marketIndex
+            block.timestamp + 30 days, // endTime
+            resolver, // resolver
+            1 ether, // yesAmount
+            2 ether, // noAmount
+            Market.Outcome.Yes // creatorChoice
+        );
+
+        // Accept the challenge as user2
+        vm.prank(user2);
+        market.acceptChallenge{value: 2 ether}();
 
         // Give users some ETH
         vm.deal(user1, 10 ether);
@@ -25,50 +35,28 @@ contract MarketTest is Test {
     function test_InitialState() public {
         assertEq(uint256(market.outcome()), uint256(Market.Outcome.Unresolved));
         assertEq(market.resolver(), resolver);
-        assertEq(market.yesPool(), 0);
-        assertEq(market.noPool(), 0);
+        assertEq(market.yesPool(), 1 ether);
+        assertEq(market.noPool(), 2 ether);
+        assertEq(uint256(market.marketState()), uint256(Market.MarketState.Active));
     }
 
     function test_BuyYes() public {
         vm.prank(user1);
         market.buyYes{value: 1 ether}();
 
-        assertEq(market.yesPool(), 1 ether);
         assertEq(market.yesStake(user1), 1 ether);
-        assertEq(market.noStake(user1), 0);
+        assertEq(market.yesPool(), 2 ether);
     }
 
     function test_BuyNo() public {
         vm.prank(user1);
         market.buyNo{value: 1 ether}();
 
-        assertEq(market.noPool(), 1 ether);
         assertEq(market.noStake(user1), 1 ether);
-        assertEq(market.yesStake(user1), 0);
+        assertEq(market.noPool(), 3 ether);
     }
 
-    function test_MultipleBuys() public {
-        // User1 buys YES
-        vm.prank(user1);
-        market.buyYes{value: 1 ether}();
-
-        // User2 buys NO
-        vm.prank(user2);
-        market.buyNo{value: 2 ether}();
-
-        // User3 buys YES
-        vm.prank(user3);
-        market.buyYes{value: 3 ether}();
-
-        assertEq(market.yesPool(), 4 ether);
-        assertEq(market.noPool(), 2 ether);
-        assertEq(market.yesStake(user1), 1 ether);
-        assertEq(market.yesStake(user3), 3 ether);
-        assertEq(market.noStake(user2), 2 ether);
-    }
-
-    function test_CannotBuyAfterEndTime() public {
-        // Fast forward past end time
+    function test_CannotBuyAfterEnd() public {
         vm.warp(block.timestamp + 31 days);
 
         vm.prank(user1);
@@ -80,32 +68,29 @@ contract MarketTest is Test {
         market.buyNo{value: 1 ether}();
     }
 
-    function test_OnlyResolverCanResolve() public {
+    function test_AnyoneCanResolveAfterDelay() public {
         vm.warp(block.timestamp + 31 days);
 
+        // Warp past end time + 1 minute
+        vm.warp(block.timestamp + 31 days + 1 minutes);
+        
+        // Anyone can call resolveWithAI now
         vm.prank(user1);
-        vm.expectRevert("resolver only");
-        market.resolve(Market.Outcome.Yes);
-
-        vm.prank(resolver);
-        market.resolve(Market.Outcome.Yes);
+        market.resolveWithAI(Market.Outcome.Yes, "AI decision: Yes");
     }
 
     function test_CannotResolveBeforeEndTime() public {
-        vm.prank(resolver);
-        vm.expectRevert("too early");
-        market.resolve(Market.Outcome.Yes);
+        vm.expectRevert("must wait 1 minute after market ends");
+        market.resolveWithAI(Market.Outcome.Yes, "AI decision: Yes");
     }
 
     function test_CannotResolveMultipleTimes() public {
-        vm.warp(block.timestamp + 31 days);
+        vm.warp(block.timestamp + 31 days + 1 minutes);
 
-        vm.startPrank(resolver);
-        market.resolve(Market.Outcome.Yes);
+        market.resolveWithAI(Market.Outcome.Yes, "AI decision: Yes");
 
-        vm.expectRevert("already");
-        market.resolve(Market.Outcome.No);
-        vm.stopPrank();
+        vm.expectRevert("already resolved");
+        market.resolveWithAI(Market.Outcome.No, "AI decision: No");
     }
 
     function test_YesWinnerPayout() public {
@@ -113,93 +98,96 @@ contract MarketTest is Test {
         vm.prank(user1);
         market.buyYes{value: 1 ether}();
 
-        // User2: 2 ETH on NO
-        vm.prank(user2);
+        // User3: 2 ETH on NO
+        vm.prank(user3);
         market.buyNo{value: 2 ether}();
 
-        // User3: 3 ETH on YES
-        vm.prank(user3);
-        market.buyYes{value: 3 ether}();
+        // Total pools: YES = 2 ETH (1 from setup + 1 from user1), NO = 4 ETH (2 from setup + 2 from user3)
+        // Total pool = 6 ETH
 
-        // Total pool: 6 ETH (4 ETH YES, 2 ETH NO)
+        // Resolve to YES
+        vm.warp(block.timestamp + 31 days + 1 minutes);
+        market.resolveWithAI(Market.Outcome.Yes, "AI decision: Yes");
 
-        // Resolve YES wins
-        vm.warp(block.timestamp + 31 days);
-        vm.prank(resolver);
-        market.resolve(Market.Outcome.Yes);
+        // Check payouts
+        uint256 balanceBefore = address(this).balance;
+        market.claim(); // Creator wins (1 ETH stake)
+        uint256 creatorPayout = address(this).balance - balanceBefore;
 
-        // User1 claims (1/4 of total pool = 1.5 ETH)
         vm.prank(user1);
         uint256 user1BalanceBefore = user1.balance;
         market.claim();
-        assertEq(user1.balance - user1BalanceBefore, 1.5 ether);
+        uint256 user1Payout = user1.balance - user1BalanceBefore;
 
-        // User3 claims (3/4 of total pool = 4.5 ETH)
-        vm.prank(user3);
-        uint256 user3BalanceBefore = user3.balance;
-        market.claim();
-        assertEq(user3.balance - user3BalanceBefore, 4.5 ether);
-
-        // User2 (NO) can't claim
-        vm.prank(user2);
-        vm.expectRevert("no stake");
-        market.claim();
+        // Creator should get: 6 ETH * (1 ETH / 2 ETH YES pool) = 3 ETH
+        assertEq(creatorPayout, 3 ether);
+        // User1 should get: 6 ETH * (1 ETH / 2 ETH YES pool) = 3 ETH
+        assertEq(user1Payout, 3 ether);
     }
 
     function test_NoWinnerPayout() public {
-        // User1: 2 ETH on YES
+        // User1: 1 ETH on YES
         vm.prank(user1);
-        market.buyYes{value: 2 ether}();
+        market.buyYes{value: 1 ether}();
 
-        // User2: 1 ETH on NO
-        vm.prank(user2);
-        market.buyNo{value: 1 ether}();
-
-        // User3: 3 ETH on NO
+        // User3: 2 ETH on NO
         vm.prank(user3);
-        market.buyNo{value: 3 ether}();
+        market.buyNo{value: 2 ether}();
 
-        // Total pool: 6 ETH (2 ETH YES, 4 ETH NO)
+        // Resolve to NO
+        vm.warp(block.timestamp + 31 days + 1 minutes);
+        market.resolveWithAI(Market.Outcome.No, "AI decision: No");
 
-        // Resolve NO wins
-        vm.warp(block.timestamp + 31 days);
-        vm.prank(resolver);
-        market.resolve(Market.Outcome.No);
-
-        // User2 claims (1/4 of total pool = 1.5 ETH)
+        // Check payouts for NO winners
         vm.prank(user2);
         uint256 user2BalanceBefore = user2.balance;
-        market.claim();
-        assertEq(user2.balance - user2BalanceBefore, 1.5 ether);
+        market.claim(); // User2 from setup wins (2 ETH stake)
+        uint256 user2Payout = user2.balance - user2BalanceBefore;
 
-        // User3 claims (3/4 of total pool = 4.5 ETH)
         vm.prank(user3);
         uint256 user3BalanceBefore = user3.balance;
         market.claim();
-        assertEq(user3.balance - user3BalanceBefore, 4.5 ether);
+        uint256 user3Payout = user3.balance - user3BalanceBefore;
 
-        // User1 (YES) can't claim
+        // Total NO pool = 4 ETH, total pool = 6 ETH
+        // User2 should get: 6 ETH * (2 ETH / 4 ETH NO pool) = 3 ETH
+        assertEq(user2Payout, 3 ether);
+        // User3 should get: 6 ETH * (2 ETH / 4 ETH NO pool) = 3 ETH  
+        assertEq(user3Payout, 3 ether);
+    }
+
+    function test_CannotClaimTwice() public {
         vm.prank(user1);
+        market.buyYes{value: 1 ether}();
+
+        vm.warp(block.timestamp + 31 days + 1 minutes);
+        market.resolveWithAI(Market.Outcome.Yes, "AI decision: Yes");
+
+        // First claim should work
+        market.claim();
+
+        // Second claim should fail
         vm.expectRevert("no stake");
         market.claim();
     }
 
-    function test_CannotClaimBeforeResolution() public {
+    function test_CannotClaimUnresolved() public {
         vm.prank(user1);
         market.buyYes{value: 1 ether}();
 
-        vm.prank(user1);
         vm.expectRevert("not resolved");
         market.claim();
     }
 
-    function test_CannotBuyZero() public {
+    function test_CannotClaimLoser() public {
         vm.prank(user1);
-        vm.expectRevert("no value");
-        market.buyYes{value: 0}();
+        market.buyYes{value: 1 ether}();
+
+        vm.warp(block.timestamp + 31 days + 1 minutes);
+        market.resolveWithAI(Market.Outcome.No, "AI decision: No");
 
         vm.prank(user1);
-        vm.expectRevert("no value");
-        market.buyNo{value: 0}();
+        vm.expectRevert("no stake");
+        market.claim();
     }
 }

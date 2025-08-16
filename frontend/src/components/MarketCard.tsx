@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useReadContract,
   useWriteContract,
@@ -8,23 +8,24 @@ import {
   useAccount,
 } from "wagmi";
 import { parseEther, formatEther } from "viem";
-import { MarketABI } from "../lib/abis/Market";
+import { MarketABI } from "@/lib/abis";
 
 interface MarketCardProps {
   address: `0x${string}`;
-  question: string;
+  question?: string; // Make optional since we'll fetch from DB using marketIndex
 }
 
-export function MarketCard({ address, question }: MarketCardProps) {
+export function MarketCard({
+  address,
+  question: propQuestion,
+}: MarketCardProps) {
   const { address: userAddress } = useAccount();
-  const [betAmount, setBetAmount] = useState("");
   const [shareAmount, setShareAmount] = useState("");
   const [selectedOutcome, setSelectedOutcome] = useState<"yes" | "no">("yes");
   const [isLoading, setIsLoading] = useState(false);
+  const [dbQuestion, setDbQuestion] = useState<string | null>(null);
 
   console.log("Market card address:", address);
-
-
 
   // Read market data
   const { data: outcome } = useReadContract({
@@ -37,7 +38,7 @@ export function MarketCard({ address, question }: MarketCardProps) {
     address,
     abi: MarketABI,
     functionName: "endTime",
-  });
+  }) as { data: bigint | undefined };
 
   const { data: yesPool } = useReadContract({
     address,
@@ -65,11 +66,72 @@ export function MarketCard({ address, question }: MarketCardProps) {
     args: userAddress ? [userAddress] : undefined,
   });
 
-  const { data: resolver } = useReadContract({
+  const { data: marketIndex } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: "resolver",
+    functionName: "marketIndex",
   });
+
+  const { data: marketState } = useReadContract({
+    address,
+    abi: MarketABI,
+    functionName: "marketState",
+  });
+
+  const { data: creator } = useReadContract({
+    address,
+    abi: MarketABI,
+    functionName: "creator",
+  });
+
+  const { data: creatorYesAmount } = useReadContract({
+    address,
+    abi: MarketABI,
+    functionName: "initialYesAmount",
+  }) as { data: bigint | undefined };
+
+  const { data: creatorNoAmount } = useReadContract({
+    address,
+    abi: MarketABI,
+    functionName: "initialNoAmount",
+  }) as { data: bigint | undefined };
+
+  const { data: creatorChoice } = useReadContract({
+    address,
+    abi: MarketABI,
+    functionName: "creatorChoice",
+  }) as { data: number | undefined };
+
+  // Fetch question from database using marketIndex
+  useEffect(() => {
+    if (marketIndex !== undefined) {
+      fetch(`/api/markets?index=${marketIndex}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.question) {
+            setDbQuestion(data.question);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch market question:", err);
+        });
+    }
+  }, [marketIndex]);
+
+  // Use database question if available, fallback to prop, then generic
+  const displayQuestion =
+    dbQuestion || propQuestion || `Market ${Number(marketIndex) + 1}`;
+
+  // Helper functions for market states
+  const isWaitingForOpponent = () => marketState === 0; // WaitingForOpponent
+  const isActiveMarket = () => marketState === 1; // Active
+
+  // Calculate required amount for opponent
+  const getRequiredOpponentAmount = (): bigint | null => {
+    if (!creatorYesAmount || !creatorNoAmount || creatorChoice === undefined)
+      return null;
+    return creatorChoice === 1 ? creatorNoAmount : creatorYesAmount;
+  };
 
   // Write functions
   const { writeContract, data: hash, isPending, error } = useWriteContract();
@@ -85,7 +147,7 @@ export function MarketCard({ address, question }: MarketCardProps) {
     return Date.now() / 1000 > Number(endTime);
   };
 
-  const isResolved = () => outcome !== 0; // Outcome.Unresolved = 0
+  const isOutcomeResolved = () => outcome !== 0; // Outcome.Unresolved = 0
 
   const getOutcomeText = () => {
     if (outcome === 1) return "YES";
@@ -94,8 +156,22 @@ export function MarketCard({ address, question }: MarketCardProps) {
   };
 
   const canClaim = () => {
-    if (!isResolved() || !yesStake || !noStake) return false;
-    return Number(yesStake) > 0 || Number(noStake) > 0;
+    if (!isOutcomeResolved() || !userAddress) return false;
+
+    // Handle both old and new contract formats
+    const yesStakeValue = yesStake ? Number(yesStake) : 0;
+    const noStakeValue = noStake ? Number(noStake) : 0;
+
+    // Check if user is on the winning side
+    if (outcome === 1) {
+      // YES won
+      return yesStakeValue > 0;
+    } else if (outcome === 2) {
+      // NO won
+      return noStakeValue > 0;
+    }
+
+    return false; // Market not resolved or invalid outcome
   };
 
   const getWinningChance = () => {
@@ -103,8 +179,8 @@ export function MarketCard({ address, question }: MarketCardProps) {
     const total = Number(yesPool) + Number(noPool);
     if (total === 0) return { yes: 50, no: 50 };
     return {
-      yes: Math.round((Number(noPool) / total) * 100),
-      no: Math.round((Number(yesPool) / total) * 100),
+      yes: Math.round((Number(yesPool) / total) * 100),
+      no: Math.round((Number(noPool) / total) * 100),
     };
   };
 
@@ -207,37 +283,85 @@ export function MarketCard({ address, question }: MarketCardProps) {
     setIsLoading(false);
   };
 
-  const resolve = async (resolveOutcome: number) => {
+  const resolveWithAI = async () => {
+    setIsLoading(true);
+    try {
+      // First, get AI resolution
+      console.log("🤖 Requesting AI resolution...");
+      const aiResponse = await fetch("/api/ai-resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: displayQuestion,
+          marketAddress: address,
+          endTime: Number(endTime),
+          context: `Market ends: ${new Date(Number(endTime) * 1000).toLocaleString()}`,
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        throw new Error("AI resolution failed");
+      }
+
+      const aiResult = await aiResponse.json();
+      console.log("🎯 AI Result:", aiResult);
+
+      if (!aiResult.success) {
+        throw new Error(aiResult.error || "AI resolution failed");
+      }
+
+      // Convert AI outcome to contract format
+      const outcomeValue = aiResult.outcome === "YES" ? 1 : 2;
+
+      // Call contract with AI resolution
+      writeContract({
+        address,
+        abi: MarketABI,
+        functionName: "resolveWithAI",
+        args: [outcomeValue, aiResult.reasoning],
+      });
+    } catch (err) {
+      console.error("Error with AI resolution:", err);
+    }
+    setIsLoading(false);
+  };
+
+  const acceptChallenge = async () => {
+    const requiredAmount = getRequiredOpponentAmount();
+    if (!requiredAmount) return;
+
     setIsLoading(true);
     try {
       writeContract({
         address,
         abi: MarketABI,
-        functionName: "resolve",
-        args: [resolveOutcome],
+        functionName: "acceptChallenge",
+        value: requiredAmount,
       });
     } catch (err) {
-      console.error("Error resolving:", err);
+      console.error("Error accepting challenge:", err);
     }
     setIsLoading(false);
   };
-
-  const chances = getWinningChance();
 
   return (
     <div className="bg-white rounded-lg border shadow-sm p-6 text-black">
       {/* Market Info */}
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{question}</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          {displayQuestion}
+        </h3>
         <div className="flex justify-between text-sm text-gray-600">
           <span>Market:{address}</span>
           <span>
             Status:{" "}
-            {isResolved()
+            {isOutcomeResolved()
               ? `Resolved: ${getOutcomeText()}`
-              : isMarketClosed()
-                ? "Closed"
-                : "Active"}
+              : isWaitingForOpponent()
+                ? "Waiting for Opponent"
+                : isMarketClosed()
+                  ? "Closed"
+                  : "Active"}
           </span>
         </div>
         {endTime && (
@@ -256,8 +380,56 @@ export function MarketCard({ address, question }: MarketCardProps) {
 
       {/* Actions */}
       <div className="space-y-3">
+        {/* Accept Challenge (for waiting markets) */}
+        {isWaitingForOpponent() && userAddress !== creator && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <h4 className="text-md font-semibold text-yellow-800 mb-2">
+              Accept Challenge
+            </h4>
+            <p className="text-sm text-yellow-700 mb-3">
+              Creator bet{" "}
+              {formatEther(
+                creatorChoice === 1
+                  ? creatorYesAmount || BigInt(0)
+                  : creatorNoAmount || BigInt(0)
+              )}{" "}
+              ETH on {creatorChoice === 1 ? "YES" : "NO"}. You need{" "}
+              {formatEther(getRequiredOpponentAmount() || BigInt(0))} ETH to bet
+              on {creatorChoice === 1 ? "NO" : "YES"}.
+            </p>
+            <button
+              onClick={acceptChallenge}
+              disabled={isPending || isLoading}
+              className="w-full px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-400"
+            >
+              Accept Challenge (
+              {formatEther(getRequiredOpponentAmount() || BigInt(0))} ETH)
+            </button>
+          </div>
+        )}
+
+        {/* Waiting for opponent message (for creator) */}
+        {isWaitingForOpponent() && userAddress === creator && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="text-md font-semibold text-blue-800 mb-2">
+              Waiting for Opponent
+            </h4>
+            <p className="text-sm text-blue-700">
+              You bet{" "}
+              {formatEther(
+                creatorChoice === 1
+                  ? creatorYesAmount || BigInt(0)
+                  : creatorNoAmount || BigInt(0)
+              )}{" "}
+              ETH on {creatorChoice === 1 ? "YES" : "NO"}. Waiting for someone
+              to bet {formatEther(getRequiredOpponentAmount() || BigInt(0))} ETH
+              on {creatorChoice === 1 ? "NO" : "YES"}.
+            </p>
+          </div>
+        )}
+
         {/* Polymarket-style Betting Interface */}
-        {!isMarketClosed() && !isResolved() && (
+        {!isMarketClosed() && !isOutcomeResolved() && isActiveMarket() && (
           <div className="space-y-4">
             {/* Outcome Selection */}
             <div className="grid grid-cols-2 gap-2">
@@ -348,36 +520,56 @@ export function MarketCard({ address, question }: MarketCardProps) {
           </div>
         )}
 
-        {/* Claim Button */}
-        {isResolved() && canClaim() && (
+        {/* Claim Button (Winners Only) */}
+        {isOutcomeResolved() && canClaim() && userAddress && (
           <button
             onClick={claim}
             disabled={isPending || isLoading}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+            className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 font-semibold"
           >
-            Claim Winnings
+            🎉 Claim Your Winnings
           </button>
         )}
 
-        {/* Resolve Buttons (for resolvers) */}
-        {isMarketClosed() && !isResolved() && resolver === userAddress && (
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => resolve(1)}
-              disabled={isPending || isLoading}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
-            >
-              Resolve YES
-            </button>
-            <button
-              onClick={() => resolve(2)}
-              disabled={isPending || isLoading}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
-            >
-              Resolve NO
-            </button>
-          </div>
-        )}
+        {/* Message for Losers */}
+        {isOutcomeResolved() &&
+          userAddress &&
+          !canClaim() &&
+          (Number(yesStake) > 0 || Number(noStake) > 0) && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+              <p className="text-red-700 font-medium">
+                😔 You bet on {Number(yesStake) > 0 ? "YES" : "NO"} but the
+                market resolved to {getOutcomeText()}
+              </p>
+              <p className="text-red-600 text-sm mt-1">
+                Better luck next time!
+              </p>
+            </div>
+          )}
+
+        {/* AI Resolution Button (anyone can use after 1 minute) */}
+        {isMarketClosed() &&
+          !isOutcomeResolved() &&
+          isActiveMarket() &&
+          endTime &&
+          Date.now() / 1000 > Number(endTime) + 60 && ( // 1 minute after market ends
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-md font-semibold text-blue-800 mb-2">
+                🤖 AI Resolution Available
+              </h4>
+              <p className="text-sm text-blue-700 mb-3">
+                Market has been closed for over 1 minute. Anyone can trigger
+                AI-powered resolution.
+              </p>
+              <button
+                onClick={resolveWithAI}
+                disabled={isPending || isLoading}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+              >
+                {isLoading ? "Analyzing..." : "🧠 Resolve with AI"}
+              </button>
+            </div>
+          )}
       </div>
 
       {/* Transaction Status */}

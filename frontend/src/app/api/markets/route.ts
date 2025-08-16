@@ -78,20 +78,16 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await pool.query(
-      `INSERT INTO markets (market_index, question) VALUES ($1, $2) RETURNING *`,
+      `INSERT INTO markets (market_index, question) VALUES ($1, $2) 
+       ON CONFLICT (market_index) 
+       DO UPDATE SET question = EXCLUDED.question
+       RETURNING *`,
       [market_index, question]
     );
 
     return NextResponse.json(result.rows[0], { status: 201 });
   } catch (err) {
     console.error("Database error:", err);
-
-    if (err instanceof Error && err.message.includes("duplicate key")) {
-      return NextResponse.json(
-        { error: "Market with this index already exists" },
-        { status: 409 }
-      );
-    }
 
     return NextResponse.json(
       {
