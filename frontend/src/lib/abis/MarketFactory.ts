@@ -242,4 +242,4 @@ export const MarketFactoryABI = [
 ] as const;
 
 // Contract addresses for local development
-export const MARKET_FACTORY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as const;
+export const MARKET_FACTORY_ADDRESS = "0x9dA94A5e96D876Cf80BFc7C68a898c97d576aFC8" as const;

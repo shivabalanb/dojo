@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
-import { MarketList } from '../components/MarketList';
-import { CreateMarket } from '../components/CreateMarket';
-import { WalletStatus } from '../components/WalletStatus';
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount } from "wagmi";
+import { MarketList } from "../components/MarketList";
+import { CreateMarket } from "../components/CreateMarket";
+import { WalletStatus } from "../components/WalletStatus";
 
 export default function Home() {
   const { isConnected } = useAccount();
@@ -23,8 +23,9 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {!isConnected ? (
           <div className="text-center py-12">
-            <h2 className="text-xl text-gray-600 mb-4">Connect your wallet to start betting</h2>
-            <ConnectButton />
+            <h2 className="text-xl text-gray-600 mb-4">
+              Connect your wallet to start betting
+            </h2>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -32,7 +33,7 @@ export default function Home() {
             <div className="lg:col-span-2">
               <MarketList />
             </div>
-            
+
             {/* Sidebar */}
             <div>
               <WalletStatus />

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useAccount, useBalance, useDisconnect } from 'wagmi';
-import { useEffect, useState } from 'react';
-import { formatEther } from 'viem';
+import { useAccount, useBalance, useDisconnect } from "wagmi";
+import { useEffect, useState } from "react";
+import { formatEther } from "viem";
 
 export function WalletStatus() {
   const { address, isConnected, chain } = useAccount();
@@ -27,18 +27,18 @@ export function WalletStatus() {
   };
 
   const getNetworkName = () => {
-    if (chain?.id === 31337) return 'Anvil Local';
-    return chain?.name || 'Unknown';
+    if (chain?.id === 31337) return "Anvil Local";
+    return chain?.name || "Unknown";
   };
 
   const getNetworkColor = () => {
-    if (chain?.id === 31337) return 'bg-green-100 text-green-800';
-    if (chain?.id === 1) return 'bg-blue-100 text-blue-800';
-    return 'bg-gray-100 text-gray-800';
+    if (chain?.id === 31337) return "bg-green-100 text-green-800";
+    if (chain?.id === 1) return "bg-blue-100 text-blue-800";
+    return "bg-gray-100 text-gray-800";
   };
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm p-4 mb-6">
+    <div className="bg-white rounded-lg border shadow-sm p-4 mb-6 text-black">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-semibold text-gray-900">Wallet Status</h3>
         <button
@@ -70,7 +70,9 @@ export function WalletStatus() {
         {/* Network */}
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-600">Network:</span>
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getNetworkColor()}`}>
+          <span
+            className={`px-2 py-1 rounded-full text-xs font-medium ${getNetworkColor()}`}
+          >
             {getNetworkName()}
           </span>
         </div>
@@ -87,7 +89,8 @@ export function WalletStatus() {
                   {parseFloat(formatEther(balance.value)).toFixed(4)} ETH
                 </div>
                 <div className="text-xs text-gray-500">
-                  ${(parseFloat(formatEther(balance.value)) * 2000).toFixed(2)} USD
+                  ${(parseFloat(formatEther(balance.value)) * 2000).toFixed(2)}{" "}
+                  USD
                 </div>
               </div>
             ) : (
@@ -102,13 +105,17 @@ export function WalletStatus() {
         <div className="text-xs text-gray-500 mb-2">Quick Actions:</div>
         <div className="flex gap-2">
           <button
-            onClick={() => window.open(`https://faucet.paradigm.xyz/`, '_blank')}
+            onClick={() =>
+              window.open(`https://faucet.paradigm.xyz/`, "_blank")
+            }
             className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100"
           >
             🚰 Get Testnet ETH
           </button>
           <button
-            onClick={() => window.open(`https://etherscan.io/address/${address}`, '_blank')}
+            onClick={() =>
+              window.open(`https://etherscan.io/address/${address}`, "_blank")
+            }
             className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
           >
             🔍 View on Explorer

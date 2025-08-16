@@ -1,9 +1,14 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
-import { parseEther, formatEther } from 'viem';
-import { MarketABI } from '../lib/abis/Market';
+import { useState } from "react";
+import {
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useAccount,
+} from "wagmi";
+import { parseEther, formatEther } from "viem";
+import { MarketABI } from "../lib/abis/Market";
 
 interface MarketCardProps {
   address: `0x${string}`;
@@ -12,60 +17,61 @@ interface MarketCardProps {
 
 export function MarketCard({ address, question }: MarketCardProps) {
   const { address: userAddress } = useAccount();
-  const [betAmount, setBetAmount] = useState('');
+  const [betAmount, setBetAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   // Read market data
   const { data: outcome } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'outcome',
+    functionName: "outcome",
   });
 
   const { data: endTime } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'endTime',
+    functionName: "endTime",
   });
 
   const { data: yesPool } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'yesPool',
+    functionName: "yesPool",
   });
 
   const { data: noPool } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'noPool',
+    functionName: "noPool",
   });
 
   const { data: yesStake } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'yesStake',
+    functionName: "yesStake",
     args: userAddress ? [userAddress] : undefined,
   });
 
   const { data: noStake } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'noStake',
+    functionName: "noStake",
     args: userAddress ? [userAddress] : undefined,
   });
 
   const { data: resolver } = useReadContract({
     address,
     abi: MarketABI,
-    functionName: 'resolver',
+    functionName: "resolver",
   });
 
   // Write functions
   const { writeContract, data: hash, isPending, error } = useWriteContract();
 
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const { isLoading: isConfirming, isSuccess: isConfirmed } =
+    useWaitForTransactionReceipt({
+      hash,
+    });
 
   // Helper functions
   const isMarketClosed = () => {
@@ -76,9 +82,9 @@ export function MarketCard({ address, question }: MarketCardProps) {
   const isResolved = () => outcome !== 0; // Outcome.Unresolved = 0
 
   const getOutcomeText = () => {
-    if (outcome === 1) return 'YES';
-    if (outcome === 2) return 'NO';
-    return 'Unresolved';
+    if (outcome === 1) return "YES";
+    if (outcome === 2) return "NO";
+    return "Unresolved";
   };
 
   const canClaim = () => {
@@ -104,11 +110,11 @@ export function MarketCard({ address, question }: MarketCardProps) {
       writeContract({
         address,
         abi: MarketABI,
-        functionName: 'buyYes',
+        functionName: "buyYes",
         value: parseEther(betAmount),
       });
     } catch (err) {
-      console.error('Error buying YES:', err);
+      console.error("Error buying YES:", err);
     }
     setIsLoading(false);
   };
@@ -120,11 +126,11 @@ export function MarketCard({ address, question }: MarketCardProps) {
       writeContract({
         address,
         abi: MarketABI,
-        functionName: 'buyNo',
+        functionName: "buyNo",
         value: parseEther(betAmount),
       });
     } catch (err) {
-      console.error('Error buying NO:', err);
+      console.error("Error buying NO:", err);
     }
     setIsLoading(false);
   };
@@ -135,10 +141,10 @@ export function MarketCard({ address, question }: MarketCardProps) {
       writeContract({
         address,
         abi: MarketABI,
-        functionName: 'claim',
+        functionName: "claim",
       });
     } catch (err) {
-      console.error('Error claiming:', err);
+      console.error("Error claiming:", err);
     }
     setIsLoading(false);
   };
@@ -149,11 +155,11 @@ export function MarketCard({ address, question }: MarketCardProps) {
       writeContract({
         address,
         abi: MarketABI,
-        functionName: 'resolve',
+        functionName: "resolve",
         args: [resolveOutcome],
       });
     } catch (err) {
-      console.error('Error resolving:', err);
+      console.error("Error resolving:", err);
     }
     setIsLoading(false);
   };
@@ -161,19 +167,33 @@ export function MarketCard({ address, question }: MarketCardProps) {
   const chances = getWinningChance();
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm p-6">
+    <div className="bg-white rounded-lg border shadow-sm p-6 text-black">
       {/* Market Info */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{question}</h3>
         <div className="flex justify-between text-sm text-gray-600">
-          <span>Market: {address.slice(0, 8)}...{address.slice(-6)}</span>
           <span>
-            Status: {isResolved() ? `Resolved: ${getOutcomeText()}` : isMarketClosed() ? 'Closed' : 'Active'}
+            Market: {address.slice(0, 8)}...{address.slice(-6)}
+          </span>
+          <span>
+            Status:{" "}
+            {isResolved()
+              ? `Resolved: ${getOutcomeText()}`
+              : isMarketClosed()
+                ? "Closed"
+                : "Active"}
           </span>
         </div>
         {endTime && (
           <div className="text-sm text-gray-600 mt-1">
-            Ends: {new Date(Number(endTime) * 1000).toLocaleString()}
+            Ends:{" "}
+            {new Date(Number(endTime) * 1000).toLocaleString(undefined, {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </div>
         )}
       </div>
@@ -183,33 +203,18 @@ export function MarketCard({ address, question }: MarketCardProps) {
         <div className="bg-green-50 p-3 rounded">
           <div className="text-sm font-medium text-green-800">YES Pool</div>
           <div className="text-lg font-bold text-green-900">
-            {yesPool ? formatEther(yesPool) : '0'} ETH
+            {yesPool ? formatEther(yesPool) : "0"} ETH
           </div>
-          <div className="text-sm text-green-700">
-            Win: {chances.yes}%
-          </div>
+          <div className="text-sm text-green-700">Win: {chances.yes}%</div>
         </div>
         <div className="bg-red-50 p-3 rounded">
           <div className="text-sm font-medium text-red-800">NO Pool</div>
           <div className="text-lg font-bold text-red-900">
-            {noPool ? formatEther(noPool) : '0'} ETH
+            {noPool ? formatEther(noPool) : "0"} ETH
           </div>
-          <div className="text-sm text-red-700">
-            Win: {chances.no}%
-          </div>
+          <div className="text-sm text-red-700">Win: {chances.no}%</div>
         </div>
       </div>
-
-      {/* User Stakes */}
-      {userAddress && (yesStake || noStake) && (
-        <div className="mb-4 p-3 bg-gray-50 rounded">
-          <div className="text-sm font-medium text-gray-700 mb-2">Your Stakes:</div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>YES: {yesStake ? formatEther(yesStake) : '0'} ETH</div>
-            <div>NO: {noStake ? formatEther(noStake) : '0'} ETH</div>
-          </div>
-        </div>
-      )}
 
       {/* Actions */}
       <div className="space-y-3">
@@ -282,10 +287,14 @@ export function MarketCard({ address, question }: MarketCardProps) {
         <div className="mt-3 text-sm text-blue-600">Transaction pending...</div>
       )}
       {isConfirming && (
-        <div className="mt-3 text-sm text-yellow-600">Confirming transaction...</div>
+        <div className="mt-3 text-sm text-yellow-600">
+          Confirming transaction...
+        </div>
       )}
       {isConfirmed && (
-        <div className="mt-3 text-sm text-green-600">Transaction confirmed!</div>
+        <div className="mt-3 text-sm text-green-600">
+          Transaction confirmed!
+        </div>
       )}
       {error && (
         <div className="mt-3 text-sm text-red-600">Error: {error.message}</div>

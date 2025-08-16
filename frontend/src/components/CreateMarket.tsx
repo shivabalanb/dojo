@@ -1,18 +1,23 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { MarketFactoryABI, MARKET_FACTORY_ADDRESS } from '../lib/abis/MarketFactory';
+import React, { useState } from "react";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import {
+  MarketFactoryABI,
+  MARKET_FACTORY_ADDRESS,
+} from "../lib/abis/MarketFactory";
+import { Hex } from "viem";
 
 export function CreateMarket() {
-  const [question, setQuestion] = useState('');
-  const [duration, setDuration] = useState('');
+  const [question, setQuestion] = useState("");
+  const [duration, setDuration] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [transactionHash, setTransactionHash] = useState<Hex | null>(null);
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash,
+  const { writeContract, data: txHash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash: txHash,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -21,32 +26,30 @@ export function CreateMarket() {
 
     setIsLoading(true);
     try {
-      const durationInSeconds = parseInt(duration) * 3600; // Convert hours to seconds
-      
       writeContract({
         address: MARKET_FACTORY_ADDRESS,
         abi: MarketFactoryABI,
-        functionName: 'createMarket',
-        args: [question, BigInt(durationInSeconds)],
+        functionName: "createMarket",
+        args: [question, BigInt(parseInt(duration) * 3600)],
       });
     } catch (err) {
-      console.error('Error creating market:', err);
+      console.error("Error creating market:", err);
     }
     setIsLoading(false);
   };
 
-  const resetForm = () => {
-    setQuestion('');
-    setDuration('');
-  };
-
   return (
     <div className="bg-white rounded-lg border shadow-sm p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Market</h2>
-      
+      <h2 className="text-xl font-semibold text-gray-900 mb-4">
+        Create New Market
+      </h2>
+
       <form onSubmit={handleSubmit} className="space-y-4 text-black">
         <div>
-          <label htmlFor="question" className="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            htmlFor="question"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
             Market Question
           </label>
           <textarea
@@ -61,7 +64,10 @@ export function CreateMarket() {
         </div>
 
         <div>
-          <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            htmlFor="duration"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
             Duration (hours)
           </label>
           <input
@@ -84,7 +90,7 @@ export function CreateMarket() {
           disabled={!question || !duration || isPending || isLoading}
           className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
-          {isPending || isLoading ? 'Creating...' : 'Create Market'}
+          {isPending || isLoading ? "Creating..." : "Create Market"}
         </button>
       </form>
 
@@ -93,28 +99,20 @@ export function CreateMarket() {
         <div className="mt-4 text-sm text-blue-600">Transaction pending...</div>
       )}
       {isConfirming && (
-        <div className="mt-4 text-sm text-yellow-600">Confirming transaction...</div>
-      )}
-      {isConfirmed && (
-        <div className="mt-4 text-sm text-green-600">
-          Market created successfully!
-          <button
-            onClick={resetForm}
-            className="ml-2 text-blue-600 hover:text-blue-800 underline"
-          >
-            Create another
-          </button>
+        <div className="mt-4 text-sm text-yellow-600">
+          Confirming transaction...
         </div>
       )}
+
       {error && (
-        <div className="mt-4 text-sm text-red-600">
-          Error: {error.message}
-        </div>
+        <div className="mt-4 text-sm text-red-600">Error: {error.message}</div>
       )}
 
       {/* Info */}
       <div className="mt-6 p-4 bg-gray-50 rounded-md">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">How it works:</h3>
+        <h3 className="text-sm font-medium text-gray-700 mb-2">
+          How it works:
+        </h3>
         <ul className="text-sm text-gray-600 space-y-1">
           <li>• Create a yes/no question about a future event</li>
           <li>• Users can bet ETH on YES or NO outcomes</li>
@@ -122,6 +120,22 @@ export function CreateMarket() {
           <li>• Winners share the total pool proportionally</li>
         </ul>
       </div>
+
+      {successMessage && (
+        <div>
+          <p style={{ color: "green" }}>{successMessage}</p>
+          <p>
+            Transaction Hash:{" "}
+            <a
+              href={`https://sepolia.etherscan.io/tx/${transactionHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {transactionHash}
+            </a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

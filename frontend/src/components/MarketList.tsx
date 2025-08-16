@@ -3,15 +3,16 @@
 import { useState } from 'react';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
-import { MarketFactoryABI, CONTRACTS } from '../lib/abis';
+import { MarketFactoryABI } from '../lib/abis';
 import { MarketCard } from './MarketCard';
+import { MARKET_FACTORY_ADDRESS } from '@/lib/abis/MarketFactory';
 
 export function MarketList() {
   const [markets, setMarkets] = useState<string[]>([]);
 
   // Read all markets from the factory
   const { data: allMarkets, isLoading, refetch } = useReadContract({
-    address: CONTRACTS.MARKET_FACTORY as `0x${string}`,
+    address: MARKET_FACTORY_ADDRESS as `0x${string}`,
     abi: MarketFactoryABI,
     functionName: 'getAllMarkets',
   });
