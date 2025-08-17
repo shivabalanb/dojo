@@ -130,7 +130,7 @@ export function WalletStatus() {
             ⚠️ <span className="font-medium">Local Network</span>
           </div>
           <div className="text-yellow-700 mt-1">
-            You're connected to Anvil localhost. Perfect for testing!
+            You&apos;re connected to Anvil localhost. Perfect for testing!
           </div>
         </div>
       )}

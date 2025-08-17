@@ -52,12 +52,26 @@ forge script script/DeployMarkets.s.sol --rpc-url https://eth-sepolia.g.alchemy.
 
 forge verify-contract \
   --chain-id 11155111 \
-  0xFf510aD629Aa29965129395BA815740981546bF6 \
-  src/Market.sol:Market \
+  0x373d37643828400B80f3de36D0DA8AD8962078b8 \
+  src/TwoPartyMarket.sol:TwoPartyMarket \
   --compiler-version v0.8.30+commit.73712a01 \
   --optimizer-runs 200 \
   --etherscan-api-key PAUMQNA5KRIYWVV6J65YG46MYY14GVNJW5 \
   --watch --retries 15 --delay 10
 
+   forge script script/DeployMockUSDC.s.sol --rpc-url https://eth-sepolia.g.alchemy.com/v2/euJp53PODQmQLSIuUpjlcMeQNtUBEtvT --broadcast
+
   0xD5BeD83a3d8f87B51ef6c92291556B634D5AE2F7
   0x8A39c0e68E2055B0f0b4e137d8c940b9b3442390
+
+  enum Outcome { 
+    Unresolved,  // 0
+    Yes,         // 1
+    No           // 2
+}
+
+enum MarketState {
+    WaitingForOpponent,  // 0
+    Active,              // 1
+    Resolved             // 2
+}

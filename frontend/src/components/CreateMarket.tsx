@@ -1,12 +1,23 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import {
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useReadContract,
+  useAccount,
+} from "wagmi";
 import { readContract } from "wagmi/actions";
 import { config } from "../lib/wagmi";
-import { parseEther } from "viem";
+import { parseEther, parseUnits, formatUnits } from "viem";
 
-import { MarketFactoryABI, MARKET_FACTORY_ADDRESS } from "../lib/abis";
+import {
+  MarketFactoryABI,
+  MARKET_FACTORY_ADDRESS,
+  MarketType,
+  MOCK_USDC_ADDRESS,
+  MockUSDCABI,
+} from "../lib/abis";
 
 export function CreateMarket() {
   const [question, setQuestion] = useState("Will the price of ETH go up?");
@@ -20,22 +31,66 @@ export function CreateMarket() {
   const [successMessage, setSuccessMessage] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState("");
 
-  // New fields for initial liquidity
-  const [totalAmount, setTotalAmount] = useState("0.001");
-  const [yesPercentage, setYesPercentage] = useState(70);
+  // Market type selection
+  const [marketType, setMarketType] = useState<"TwoParty" | "LMSR">("TwoParty");
+
+  // TwoParty market fields
+  const [creatorBetAmount, setCreatorBetAmount] = useState("10"); // USDC amount
+  const [oddsRatio, setOddsRatio] = useState("1:2"); // Default odds ratio
   const [creatorSide, setCreatorSide] = useState<"yes" | "no">("yes");
 
-  // Calculate amounts based on percentage
-  const yesAmount = totalAmount
-    ? ((yesPercentage / 100) * Number(totalAmount)).toFixed(4)
-    : "";
-  const noAmount = totalAmount
-    ? (((100 - yesPercentage) / 100) * Number(totalAmount)).toFixed(4)
-    : "";
+  // Calculate opponent bet amount based on odds ratio
+  const calculateOpponentBetAmount = (): number => {
+    const [creatorOdds, opponentOdds] = oddsRatio.split(":").map(Number);
+    if (creatorOdds <= 0 || opponentOdds <= 0) return 0;
+    const creatorAmount = parseFloat(creatorBetAmount) || 0;
+    return (creatorAmount * opponentOdds) / creatorOdds;
+  };
+
+  const opponentBetAmount = calculateOpponentBetAmount();
+
+  // LMSR market fields
+  const [initialLiquidity, setInitialLiquidity] = useState("0.01");
+  const [liquidityLevel, setLiquidityLevel] = useState(2); // 1-5 scale
+
+  // Calculate beta parameter for LMSR (makes it user-friendly)
+  const getBetaParameter = () => {
+    // Convert slider (1-5) to beta values
+    // Higher liquidity level = higher beta = more stable prices
+    const betaValues = {
+      1: parseEther("0.01"), // Low liquidity, volatile prices
+      2: parseEther("0.05"), // Medium-low liquidity
+      3: parseEther("0.1"), // Medium liquidity
+      4: parseEther("0.2"), // Medium-high liquidity
+      5: parseEther("0.5"), // High liquidity, stable prices
+    };
+    return betaValues[liquidityLevel as keyof typeof betaValues];
+  };
+
+  // Get liquidity description
+  const getLiquidityDescription = () => {
+    const descriptions = {
+      1: "Volatile prices, lower trading fees",
+      2: "Moderately volatile prices",
+      3: "Balanced volatility and fees",
+      4: "Stable prices, moderate fees",
+      5: "Very stable prices, higher fees",
+    };
+    return descriptions[liquidityLevel as keyof typeof descriptions];
+  };
 
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
+  });
+
+  // Read user's USDC balance
+  const { address: userAddress } = useAccount();
+  const { data: usdcBalance } = useReadContract({
+    address: MOCK_USDC_ADDRESS,
+    abi: MockUSDCABI,
+    functionName: "balanceOf",
+    args: userAddress ? [userAddress] : undefined,
   });
 
   // Wait for transaction to complete, then store in database
@@ -52,7 +107,7 @@ export function CreateMarket() {
       const marketCount = await readContract(config, {
         address: MARKET_FACTORY_ADDRESS,
         abi: MarketFactoryABI,
-        functionName: "getMarketCount",
+        functionName: "getAllMarketsCount",
       });
 
       // The market index should be the count - 1 (since we just added a new market)
@@ -97,8 +152,7 @@ export function CreateMarket() {
             minutes: "0",
             seconds: "0",
           });
-          setTotalAmount("");
-          setYesPercentage(50);
+          setCreatorBetAmount("10");
           setCreatorSide("yes");
           setSuccessMessage("");
         }, 3000);
@@ -137,11 +191,17 @@ export function CreateMarket() {
       parseInt(durationInput.minutes || "0") * 60 +
       parseInt(durationInput.seconds || "0");
 
+    // Validation
+    if (!question || totalDurationInSeconds <= 0) return;
+
     if (
-      !question ||
-      totalDurationInSeconds <= 0 ||
-      !totalAmount ||
-      Number(totalAmount) <= 0
+      marketType === "TwoParty" &&
+      (!creatorBetAmount || Number(creatorBetAmount) <= 0)
+    )
+      return;
+    if (
+      marketType === "LMSR" &&
+      (!initialLiquidity || Number(initialLiquidity) <= 0)
     )
       return;
 
@@ -151,25 +211,58 @@ export function CreateMarket() {
     // Store the values before they might be cleared
     const questionValue = question;
     const durationValue = totalDurationInSeconds;
-    const yesAmountWei = parseEther(yesAmount);
-    const noAmountWei = parseEther(noAmount);
-    const creatorChoseYes = creatorSide === "yes";
-    const creatorAmountWei = creatorChoseYes ? yesAmountWei : noAmountWei;
 
     try {
-      writeContract({
-        address: MARKET_FACTORY_ADDRESS,
-        abi: MarketFactoryABI,
-        functionName: "createMarket",
-        args: [
-          question,
-          BigInt(durationValue),
-          yesAmountWei,
-          noAmountWei,
-          creatorChoseYes ? 1 : 2, // 1 = Yes, 2 = No (Outcome enum)
-        ],
-        value: creatorAmountWei,
-      });
+      if (marketType === "TwoParty") {
+        // Create TwoParty market with USDC
+        const creatorBetAmountUSDC = parseUnits(creatorBetAmount, 6); // USDC has 6 decimals
+        const opponentBetAmountUSDC = parseUnits(
+          opponentBetAmount.toString(),
+          6
+        ); // USDC has 6 decimals
+        const creatorChoseYes = creatorSide === "yes";
+
+        // Create the market (USDC will be transferred later when providing initial bet)
+        writeContract({
+          address: MARKET_FACTORY_ADDRESS,
+          abi: MarketFactoryABI,
+          functionName: "createTwoPartyMarket",
+          args: [
+            question,
+            BigInt(durationValue),
+            creatorBetAmountUSDC,
+            opponentBetAmountUSDC,
+            creatorChoseYes ? 1 : 2, // 1 = Yes, 2 = No (Outcome enum)
+            MOCK_USDC_ADDRESS, // USDC token address
+          ],
+        });
+      } else {
+        // Create LMSR market with USDC
+        const liquidityUSDC = parseUnits(initialLiquidity, 6); // USDC has 6 decimals
+        const betaParameter = getBetaParameter();
+
+        // First approve USDC spending for the factory (LMSR transfers USDC during creation)
+        writeContract({
+          address: MOCK_USDC_ADDRESS,
+          abi: MockUSDCABI,
+          functionName: "approve",
+          args: [MARKET_FACTORY_ADDRESS, liquidityUSDC],
+        });
+
+        // Then create the market (USDC will be transferred during market creation)
+        writeContract({
+          address: MARKET_FACTORY_ADDRESS,
+          abi: MarketFactoryABI,
+          functionName: "createLMSRMarket",
+          args: [
+            MOCK_USDC_ADDRESS, // USDC token address
+            question,
+            BigInt(durationValue),
+            betaParameter,
+            liquidityUSDC,
+          ],
+        });
+      }
 
       // Set pending question - database storage will happen after transaction confirmation
       setPendingQuestion(questionValue);
@@ -185,7 +278,60 @@ export function CreateMarket() {
         Create New Market
       </h2>
 
+      {/* USDC Balance Display */}
+      {userAddress && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="text-sm text-green-800">
+            Your USDC Balance:{" "}
+            <span className="font-semibold">
+              {usdcBalance ? formatUnits(usdcBalance as bigint, 6) : "0"} USDC
+            </span>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4 text-black">
+        {/* Market Type Toggle */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Market Type
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setMarketType("TwoParty")}
+              className={`p-4 rounded-lg border-2 transition-all text-left ${
+                marketType === "TwoParty"
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-300 hover:border-blue-300"
+              }`}
+            >
+              <div className="font-semibold text-blue-700">
+                Two-Party Challenge
+              </div>
+              <div className="text-sm text-gray-600 mt-1">
+                Someone needs to accept your challenge to start trading
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMarketType("LMSR")}
+              className={`p-4 rounded-lg border-2 transition-all text-left ${
+                marketType === "LMSR"
+                  ? "border-purple-500 bg-purple-50"
+                  : "border-gray-300 hover:border-purple-300"
+              }`}
+            >
+              <div className="font-semibold text-purple-700">
+                Automated Market
+              </div>
+              <div className="text-sm text-gray-600 mt-1">
+                Trade immediately with continuous liquidity
+              </div>
+            </button>
+          </div>
+        </div>
+
         <div>
           <label
             htmlFor="question"
@@ -283,146 +429,189 @@ export function CreateMarket() {
           </p>
         </div>
 
-        {/* Initial Liquidity Setup */}
-        <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-lg font-medium text-gray-900">
-            Initial Liquidity Challenge
-          </h3>
+        {/* Market-Specific Configuration */}
+        {marketType === "TwoParty" ? (
+          <div className="space-y-4 p-4 bg-blue-50 rounded-lg">
+            <h3 className="text-lg font-medium text-blue-900">
+              Challenge Setup
+            </h3>
 
-          {/* Your Side Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Your Position
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setCreatorSide("yes")}
-                className={`px-4 py-2 rounded-md border-2 transition-all ${
-                  creatorSide === "yes"
-                    ? "border-green-500 bg-green-50 text-green-700"
-                    : "border-gray-300 text-gray-700 hover:border-green-300"
-                }`}
-              >
-                YES
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreatorSide("no")}
-                className={`px-4 py-2 rounded-md border-2 transition-all ${
-                  creatorSide === "no"
-                    ? "border-red-500 bg-red-50 text-red-700"
-                    : "border-gray-300 text-gray-700 hover:border-red-300"
-                }`}
-              >
-                NO
-              </button>
-            </div>
-          </div>
-
-          {/* Total Pool Size */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Total Pool Size (ETH)
-            </label>
-            <input
-              type="number"
-              value={totalAmount}
-              onChange={(e) => setTotalAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="1.0"
-              step="0.001"
-              min="0"
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Total liquidity that will be in the market
-            </p>
-          </div>
-
-          {/* Odds Slider */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Initial Odds
-            </label>
-            <div className="space-y-3">
-              <div className="flex items-center space-x-4">
-                <span className="text-sm font-medium text-green-600 w-12">
+            {/* Your Side Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Your Position
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setCreatorSide("yes")}
+                  className={`px-4 py-2 rounded-md border-2 transition-all ${
+                    creatorSide === "yes"
+                      ? "border-green-500 bg-green-50 text-green-700"
+                      : "border-gray-300 text-gray-700 hover:border-green-300"
+                  }`}
+                >
                   YES
-                </span>
-                <input
-                  type="range"
-                  min="10"
-                  max="90"
-                  value={yesPercentage}
-                  onChange={(e) => setYesPercentage(Number(e.target.value))}
-                  className="flex-1 h-2 bg-gradient-to-r from-green-200 via-yellow-200 to-red-200 rounded-lg appearance-none cursor-pointer slider"
-                  style={{
-                    background: `linear-gradient(to right, #10b981 0%, #10b981 ${yesPercentage}%, #ef4444 ${yesPercentage}%, #ef4444 100%)`,
-                  }}
-                />
-                <span className="text-sm font-medium text-red-600 w-12">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreatorSide("no")}
+                  className={`px-4 py-2 rounded-md border-2 transition-all ${
+                    creatorSide === "no"
+                      ? "border-red-500 bg-red-50 text-red-700"
+                      : "border-gray-300 text-gray-700 hover:border-red-300"
+                  }`}
+                >
                   NO
-                </span>
-              </div>
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>{yesPercentage}% YES</span>
-                <span>{100 - yesPercentage}% NO</span>
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Amount Breakdown */}
-          <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
-            <div className="text-center">
-              <div className="text-sm font-medium text-gray-700">YES Pool</div>
-              <div className="text-lg font-bold text-green-600">
-                {yesAmount || "0"} ETH
-              </div>
-              {creatorSide === "yes" && (
-                <p className="text-xs text-green-600 mt-1">
-                  ← You&apos;ll pay this
-                </p>
-              )}
+            {/* Creator Bet Amount */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Your Bet Amount (USDC)
+              </label>
+              <input
+                type="number"
+                value={creatorBetAmount}
+                onChange={(e) => setCreatorBetAmount(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="10.0"
+                step="0.01"
+                min="0"
+                required
+              />
             </div>
-            <div className="text-center">
-              <div className="text-sm font-medium text-gray-700">NO Pool</div>
-              <div className="text-lg font-bold text-red-600">
-                {noAmount || "0"} ETH
-              </div>
-              {creatorSide === "no" && (
-                <p className="text-xs text-red-600 mt-1">
-                  ← You&apos;ll pay this
-                </p>
-              )}
-            </div>
-          </div>
 
-          {/* Preview */}
-          {totalAmount && yesAmount && noAmount && (
-            <div className="p-3 bg-blue-50 rounded-md">
-              <p className="text-sm text-blue-800">
-                <strong>Challenge Preview:</strong> You&apos;ll bet{" "}
-                {creatorSide === "yes" ? yesAmount : noAmount} ETH on{" "}
-                {creatorSide.toUpperCase()}. Someone needs to bet{" "}
-                {creatorSide === "yes" ? noAmount : yesAmount} ETH on{" "}
-                {creatorSide === "yes" ? "NO" : "YES"} to activate this{" "}
-                {totalAmount} ETH market.
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                Market will start at {yesPercentage}% YES /{" "}
-                {100 - yesPercentage}% NO odds
+            {/* Odds Ratio */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Odds Ratio (Your Bet : Opponent Bet)
+              </label>
+              <input
+                type="text"
+                value={oddsRatio}
+                onChange={(e) => setOddsRatio(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="1:2"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Example: 1:2 means if you bet 10 USDC, opponent needs to bet 20
+                USDC
               </p>
             </div>
-          )}
-        </div>
+
+            {/* Preview */}
+            {creatorBetAmount && oddsRatio && (
+              <div className="p-3 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <strong>Challenge Preview:</strong> You&apos;ll bet{" "}
+                  {creatorBetAmount} USDC on {creatorSide.toUpperCase()}.
+                  Someone needs to bet {opponentBetAmount.toFixed(2)} USDC on{" "}
+                  {creatorSide === "yes" ? "NO" : "YES"} to activate this
+                  challenge.
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Winner takes all (
+                  {(Number(creatorBetAmount) + opponentBetAmount).toFixed(2)}{" "}
+                  USDC total)
+                </p>
+                <p className="text-xs text-orange-600 mt-1">
+                  <strong>Note:</strong> After creating the market, you&apos;ll
+                  need to provide your initial USDC stake to start the
+                  challenge.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4 p-4 bg-purple-50 rounded-lg">
+            <h3 className="text-lg font-medium text-purple-900">
+              Automated Market Setup
+            </h3>
+
+            {/* Initial Liquidity */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Initial Liquidity (ETH)
+              </label>
+              <input
+                type="number"
+                value={initialLiquidity}
+                onChange={(e) => setInitialLiquidity(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="0.01"
+                step="0.001"
+                min="0"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This ETH will be used to provide initial market liquidity
+              </p>
+            </div>
+
+            {/* Liquidity Level Slider */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Market Liquidity Level
+              </label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm font-medium text-purple-600 w-16">
+                    Volatile
+                  </span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    value={liquidityLevel}
+                    onChange={(e) => setLiquidityLevel(Number(e.target.value))}
+                    className="flex-1 h-2 bg-gradient-to-r from-purple-200 to-purple-600 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <span className="text-sm font-medium text-purple-600 w-16">
+                    Stable
+                  </span>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm font-medium text-purple-700">
+                    Level {liquidityLevel}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {getLiquidityDescription()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="p-3 bg-purple-100 rounded-md">
+              <p className="text-sm text-purple-800">
+                <strong>Market Preview:</strong> Your {initialLiquidity} ETH
+                will provide initial liquidity. Users can trade immediately at
+                market-determined prices.
+              </p>
+              <p className="text-xs text-purple-600 mt-1">
+                True LMSR pricing with constant liquidity. Share prices adjust
+                based on trading activity and beta parameter.
+              </p>
+            </div>
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={isPending || isLoading}
-          className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          className={`w-full px-4 py-2 text-white rounded-md disabled:bg-gray-400 disabled:cursor-not-allowed ${
+            marketType === "TwoParty"
+              ? "bg-blue-600 hover:bg-blue-700"
+              : "bg-purple-600 hover:bg-purple-700"
+          }`}
         >
-          {isPending || isLoading ? "Creating..." : "Create Market"}
+          {isPending || isLoading
+            ? "Creating..."
+            : `Create ${marketType === "TwoParty" ? "Challenge" : "Automated"} Market`}
         </button>
       </form>
 
