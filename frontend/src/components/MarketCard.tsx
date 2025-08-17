@@ -31,9 +31,14 @@ export function MarketCard({
 }: MarketCardProps) {
   const { address: userAddress } = useAccount();
   const [shareAmount, setShareAmount] = useState("");
-  const [selectedOutcome, setSelectedOutcome] = useState<"yes" | "no">("yes");
+
   const [isLoading, setIsLoading] = useState(false);
   const [dbQuestion, setDbQuestion] = useState<string | null>(null);
+  const [ftsoPrice, setFtsoPrice] = useState<string | null>(null);
+  const [isLoadingPrice, setIsLoadingPrice] = useState(false);
+  const [selectedResolutionMethod, setSelectedResolutionMethod] = useState<
+    "ftso" | "ai"
+  >("ftso");
 
   // LMSR-specific state
   const [lmsrAmount, setLmsrAmount] = useState("");
@@ -175,6 +180,35 @@ export function MarketCard({
     query: { enabled: isLMSRMarket },
   }) as { data: bigint | undefined };
 
+  // Check if market has FTSO resolution configured
+  const { data: hasFTSOResolution } = useReadContract({
+    address,
+    abi: dynamicABI,
+    functionName: "hasFTSOResolution",
+  });
+
+  // Read FTSO parameters
+  const { data: ftsoAddress } = useReadContract({
+    address,
+    abi: dynamicABI,
+    functionName: "ftsoAddress",
+    query: { enabled: hasFTSOResolution as boolean },
+  });
+
+  const { data: ftsoFeedId } = useReadContract({
+    address,
+    abi: dynamicABI,
+    functionName: "ftsoFeedId",
+    query: { enabled: hasFTSOResolution as boolean },
+  });
+
+  const { data: priceThreshold } = useReadContract({
+    address,
+    abi: dynamicABI,
+    functionName: "priceThreshold",
+    query: { enabled: hasFTSOResolution as boolean },
+  });
+
   // Calculate dQ for quotes
   const dQ = shareQty ? parseEther(shareQty) : BigInt(0);
 
@@ -222,6 +256,21 @@ export function MarketCard({
     }
   }, [marketIndex]);
 
+  // Fetch FTSO price when market closes (no auto-resolution - let user choose)
+  useEffect(() => {
+    if (
+      endTime &&
+      Date.now() / 1000 > Number(endTime) && // Market is closed
+      hasFTSOResolution &&
+      ftsoAddress &&
+      ftsoFeedId &&
+      !isOutcomeResolved() && // Only if not already resolved
+      !ftsoPrice // Only fetch if not already fetched
+    ) {
+      fetchFTSOPrice();
+    }
+  }, [endTime, hasFTSOResolution, ftsoAddress, ftsoFeedId, ftsoPrice, outcome]);
+
   // Use database question if available, fallback to prop, then generic
   const displayQuestion =
     dbQuestion || propQuestion || `Market ${Number(marketIndex) + 1}`;
@@ -248,6 +297,49 @@ export function MarketCard({
     }
     if (!opponentBetAmount || creatorChoice === undefined) return null;
     return opponentBetAmount; // Opponent bet amount based on odds
+  };
+
+  // Function to fetch current FTSO price
+  const fetchFTSOPrice = async () => {
+    if (!ftsoAddress || !ftsoFeedId) return;
+
+    setIsLoadingPrice(true);
+    try {
+      // FTSO v2 interface for getFeedById
+      const ftsoABI = [
+        {
+          inputs: [
+            { internalType: "bytes21", name: "_feedId", type: "bytes21" },
+          ],
+          name: "getFeedById",
+          outputs: [
+            { internalType: "uint256", name: "_price", type: "uint256" },
+            { internalType: "int8", name: "_decimals", type: "int8" },
+            { internalType: "uint64", name: "_timestamp", type: "uint64" },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+      ];
+
+      const result = await readContract(config, {
+        address: ftsoAddress as `0x${string}`,
+        abi: ftsoABI,
+        functionName: "getFeedById",
+        args: [ftsoFeedId as `0x${string}`],
+      });
+
+      const [price, decimals, timestamp] = result as [bigint, number, bigint];
+
+      // Convert price to actual USD value
+      const actualPrice = Number(price) / Math.pow(10, Math.abs(decimals));
+      setFtsoPrice(actualPrice.toFixed(2));
+    } catch (error) {
+      console.error("Failed to fetch FTSO price:", error);
+      setFtsoPrice("Error");
+    } finally {
+      setIsLoadingPrice(false);
+    }
   };
 
   // Write functions
@@ -310,47 +402,14 @@ export function MarketCard({
     };
   };
 
-  // Get current price based on selected outcome
-  const { yesPrice, noPrice } = getSharePrices();
-  const currentPrice = selectedOutcome === "yes" ? yesPrice : noPrice;
-
-  // Calculate total cost in USD (shares × price per share)
-  const calculateTotalCost = (shares: string): number => {
-    if (!shares || !currentPrice || currentPrice === 0) return 0;
-    return parseFloat(shares) * currentPrice;
-  };
-
-  // Calculate potential payout if user's side wins
-  const calculatePotentialPayout = (shares: string): number => {
-    if (!shares) return 0;
-    // Each share pays out $1 if it wins
-    return parseFloat(shares) * 1.0;
-  };
-
-  // Calculate potential profit
-  const calculatePotentialProfit = (shares: string): number => {
-    if (!shares) return 0;
-    const payout = calculatePotentialPayout(shares);
-    const cost = calculateTotalCost(shares);
-    return payout - cost;
-  };
-
-  // Update share amount and calculate cost
-  const handleShareChange = (shares: string) => {
-    setShareAmount(shares);
-    // No longer need betAmount for ETH
-  };
-
   // Contract interactions
   const buyYes = async () => {
     if (!shareAmount) return;
-    const totalCost = calculateTotalCost(shareAmount);
-    if (totalCost <= 0) return;
 
     setIsLoading(true);
     try {
-      // Convert USD amount to USDC (6 decimals)
-      const usdcAmount = parseUnits(totalCost.toString(), 6);
+      // Convert share amount to USDC (6 decimals)
+      const usdcAmount = parseUnits(shareAmount, 6);
 
       // First approve USDC spending
       writeContract({
@@ -375,13 +434,11 @@ export function MarketCard({
 
   const buyNo = async () => {
     if (!shareAmount) return;
-    const totalCost = calculateTotalCost(shareAmount);
-    if (totalCost <= 0) return;
 
     setIsLoading(true);
     try {
-      // Convert USD amount to USDC (6 decimals)
-      const usdcAmount = parseUnits(totalCost.toString(), 6);
+      // Convert share amount to USDC (6 decimals)
+      const usdcAmount = parseUnits(shareAmount, 6);
 
       // First approve USDC spending
       writeContract({
@@ -514,47 +571,32 @@ export function MarketCard({
     setIsLoading(false);
   };
 
+  // AI Resolution function
   const resolveWithAI = async () => {
-    setIsLoading(true);
     try {
-      // First, get AI resolution
-      console.log("🤖 Requesting AI resolution...");
-      const aiResponse = await fetch("/api/ai-resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: displayQuestion,
-          marketAddress: address,
-          endTime: Number(endTime),
-          context: `Market ends: ${new Date(Number(endTime) * 1000).toLocaleString()}`,
-        }),
-      });
-
-      if (!aiResponse.ok) {
-        throw new Error("AI resolution failed");
-      }
-
-      const aiResult = await aiResponse.json();
-      console.log("🎯 AI Result:", aiResult);
-
-      if (!aiResult.success) {
-        throw new Error(aiResult.error || "AI resolution failed");
-      }
-
-      // Convert AI outcome to contract format
-      const outcomeValue = aiResult.outcome === "YES" ? 1 : 2;
-
-      // Call contract with AI resolution
       writeContract({
         address,
         abi: dynamicABI,
         functionName: "resolveWithAI",
-        args: [outcomeValue, aiResult.reasoning],
+        args: [],
       });
     } catch (err) {
-      console.error("Error with AI resolution:", err);
+      console.error("Error resolving with AI:", err);
     }
-    setIsLoading(false);
+  };
+
+  // Simple FTSO resolution using stored parameters
+  const resolveWithStoredFTSO = async () => {
+    try {
+      writeContract({
+        address,
+        abi: dynamicABI,
+        functionName: "resolveWithStoredFTSO",
+        args: [],
+      });
+    } catch (err) {
+      console.error("Error resolving with stored FTSO:", err);
+    }
   };
 
   const provideInitialBet = async () => {
@@ -673,11 +715,12 @@ export function MarketCard({
       {/* Actions */}
       <div className="space-y-3">
         {/* Accept Challenge (for waiting markets or active markets with only one side bet) - TwoParty markets only */}
-        {(isWaitingForOpponent() ||
-          (isActiveMarket() &&
-            !isLMSRMarket &&
-            ((yesPool as bigint) === BigInt(0) ||
-              (noPool as bigint) === BigInt(0)))) &&
+        {!isMarketClosed() &&
+          (isWaitingForOpponent() ||
+            (isActiveMarket() &&
+              !isLMSRMarket &&
+              ((yesPool as bigint) === BigInt(0) ||
+                (noPool as bigint) === BigInt(0)))) &&
           userAddress !== creator &&
           !isLMSRMarket && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -702,11 +745,12 @@ export function MarketCard({
           )}
 
         {/* Provide Initial Liquidity or Waiting for Opponent (for creator) - TwoParty markets only */}
-        {(isWaitingForOpponent() ||
-          (isActiveMarket() &&
-            !isLMSRMarket &&
-            ((yesPool as bigint) === BigInt(0) ||
-              (noPool as bigint) === BigInt(0)))) &&
+        {!isMarketClosed() &&
+          (isWaitingForOpponent() ||
+            (isActiveMarket() &&
+              !isLMSRMarket &&
+              ((yesPool as bigint) === BigInt(0) ||
+                (noPool as bigint) === BigInt(0)))) &&
           userAddress === creator &&
           !isLMSRMarket && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -910,6 +954,41 @@ export function MarketCard({
               Congratulations! You bet on {Number(yesStake) > 0 ? "YES" : "NO"}{" "}
               and the market resolved to {getOutcomeText()}.
             </p>
+
+            {/* Show FTSO price for resolved markets */}
+            {(hasFTSOResolution as boolean) && (
+              <div className="mb-3 p-2 bg-white border border-green-300 rounded-lg">
+                {ftsoPrice ? (
+                  <>
+                    <p className="text-xs text-green-600 font-medium">
+                      Final FTSO Price
+                    </p>
+                    <p className="text-sm font-bold text-green-800">
+                      ${ftsoPrice}
+                    </p>
+                    {priceThreshold && typeof priceThreshold === "bigint" && (
+                      <p className="text-xs text-green-600">
+                        Threshold: ${formatUnits(priceThreshold, 7)}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-xs text-green-600 font-medium mb-2">
+                      FTSO Price
+                    </p>
+                    <button
+                      onClick={fetchFTSOPrice}
+                      disabled={isLoadingPrice}
+                      className="px-3 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+                    >
+                      {isLoadingPrice ? "Loading..." : "Fetch Price"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={claim}
               disabled={isPending || isLoading}
@@ -956,27 +1035,144 @@ export function MarketCard({
             </div>
           )}
 
-        {/* AI Resolution Button (anyone can use after 1 minute) */}
+        {/* Unfulfilled Market Message */}
+        {isMarketClosed() &&
+          !isOutcomeResolved() &&
+          (!isActiveMarket() ||
+            (Number(yesPool) === 0 && Number(noPool) === 0)) && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+              <div className="text-2xl mb-2">⚠️</div>
+              <h4 className="text-lg font-bold text-yellow-800 mb-2">
+                Market Unfulfilled
+              </h4>
+              <p className="text-yellow-700 font-medium mb-2">
+                This market did not receive sufficient participation to be
+                resolved.
+              </p>
+              <p className="text-yellow-600 text-sm">
+                {Number(yesPool) === 0 && Number(noPool) === 0
+                  ? "No initial liquidity was provided."
+                  : "The opponent did not join the challenge."}
+              </p>
+              <p className="text-yellow-600 text-xs mt-2">
+                Participants can claim back their stakes.
+              </p>
+
+              {/* Claim button for unfulfilled markets */}
+              {(Number(yesStake) > 0 || Number(noStake) > 0) && (
+                <button
+                  onClick={claim}
+                  disabled={isPending || isLoading}
+                  className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-400 font-semibold"
+                >
+                  {isLoading ? "Claiming..." : "💰 Claim Stakes"}
+                </button>
+              )}
+            </div>
+          )}
+
+        {/* Resolution Options (available immediately when market closes) */}
         {isMarketClosed() &&
           !isOutcomeResolved() &&
           isActiveMarket() &&
-          endTime &&
-          Date.now() / 1000 > Number(endTime) + 60 && ( // 1 minute after market ends
+          Number(yesPool) > 0 &&
+          Number(noPool) > 0 &&
+          endTime && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-md font-semibold text-blue-800 mb-2">
-                🤖 AI Resolution Available
+              <h4 className="text-lg font-semibold text-blue-900 mb-3">
+                Choose Resolution Method
               </h4>
-              <p className="text-sm text-blue-700 mb-3">
-                Market has been closed for over 1 minute. Anyone can trigger
-                AI-powered resolution.
-              </p>
-              <button
-                onClick={resolveWithAI}
-                disabled={isPending || isLoading}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-              >
-                {isLoading ? "Analyzing..." : "🧠 Resolve with AI"}
-              </button>
+
+              {/* Resolution Method Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-blue-700 mb-2">
+                  Resolution Method
+                </label>
+                <select
+                  value={selectedResolutionMethod}
+                  onChange={(e) =>
+                    setSelectedResolutionMethod(e.target.value as "ftso" | "ai")
+                  }
+                  className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="ftso">📊 FTSO Price Feed (Recommended)</option>
+                  <option value="ai">🧠 AI Analysis</option>
+                </select>
+                <p className="text-xs text-blue-600 mt-1">
+                  Select how you want to resolve this market
+                </p>
+
+                {/* Selected Method Display */}
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-blue-600">🎯</span>
+                    <span className="text-sm font-medium text-blue-800">
+                      Selected Method:
+                    </span>
+                    <span className="text-sm text-blue-700">
+                      {selectedResolutionMethod === "ftso"
+                        ? "📊 FTSO Price Feed"
+                        : "🧠 AI Analysis"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">
+                    {selectedResolutionMethod === "ftso"
+                      ? "Will use real-time price data from Flare FTSO"
+                      : "AI will analyze the question and determine the outcome"}
+                  </p>
+                </div>
+              </div>
+
+              {/* FTSO Resolution Section */}
+              {selectedResolutionMethod === "ftso" && (
+                <div className="mb-4">
+                  {/* Current FTSO Price Display */}
+                  {ftsoPrice && (
+                    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="text-center">
+                        <p className="text-sm text-green-700 font-medium">
+                          Current FTSO Price
+                        </p>
+                        <p className="text-lg font-bold text-green-800">
+                          ${ftsoPrice}
+                        </p>
+                        <p className="text-xs text-green-600 mt-1">
+                          Threshold: ${formatUnits(priceThreshold as bigint, 7)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={resolveWithStoredFTSO}
+                    disabled={isPending || isLoading}
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 flex items-center justify-center gap-2 mb-3"
+                  >
+                    {isLoading ? "Resolving..." : "📊 Resolve with FTSO"}
+                  </button>
+
+                  <div className="flex justify-between items-center text-xs text-green-600">
+                    <span>Uses real-time price data from Flare FTSO</span>
+                    {isLoadingPrice && <span>Loading price...</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Resolution Section */}
+              {selectedResolutionMethod === "ai" && (
+                <div className="space-y-3">
+                  <button
+                    onClick={resolveWithAI}
+                    disabled={isPending || isLoading}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? "Analyzing..." : "🧠 Resolve with AI"}
+                  </button>
+                  <p className="text-xs text-blue-600 text-center">
+                    AI will analyze the question and determine the outcome
+                  </p>
+                </div>
+              )}
             </div>
           )}
       </div>

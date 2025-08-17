@@ -23,12 +23,50 @@ contract MarketFactory {
         if (creatorChoice != 1 && creatorChoice != 2) revert InvalidChoice();
         if (usdc == address(0)) revert InvalidValue();
         
-        market = address(new TwoPartyMarket(allMarkets.length, block.timestamp + duration, msg.sender, creatorBetAmount, opponentBetAmount, TwoPartyMarket.Outcome(creatorChoice), usdc));
+        market = address(new TwoPartyMarket(allMarkets.length, block.timestamp + duration, msg.sender, creatorBetAmount, opponentBetAmount, TwoPartyMarket.Outcome(creatorChoice), usdc, address(0), 0, 0, bytes21(0)));
         allMarkets.push(market);
         marketTypes[market] = 0; // Set market type to 0 for TwoPartyMarket
         emit MarketCreated(market, question, block.timestamp + duration, msg.sender, 0);
     }
     
+    function createTwoPartyMarketWithFTSO(
+        string calldata question, 
+        uint256 duration, 
+        uint256 creatorBetAmount, 
+        uint256 opponentBetAmount, 
+        uint8 creatorChoice, 
+        address usdc,
+        address ftsoAddress,
+        uint256 ftsoEpochId,
+        uint256 priceThreshold,
+        bytes21 ftsoFeedId
+    ) external returns (address market) {
+        if (duration == 0) revert InvalidDuration();
+        if (creatorBetAmount == 0 || opponentBetAmount == 0) revert InvalidAmount();
+        if (creatorChoice != 1 && creatorChoice != 2) revert InvalidChoice();
+        if (usdc == address(0)) revert InvalidValue();
+        if (ftsoAddress == address(0)) revert InvalidValue();
+        if (ftsoEpochId == 0) revert InvalidValue();
+        if (priceThreshold == 0) revert InvalidValue();
+        if (ftsoFeedId == bytes21(0)) revert InvalidValue();
+        
+        market = address(new TwoPartyMarket(
+            allMarkets.length, 
+            block.timestamp + duration, 
+            msg.sender, 
+            creatorBetAmount, 
+            opponentBetAmount, 
+            TwoPartyMarket.Outcome(creatorChoice), 
+            usdc, 
+            ftsoAddress, 
+            ftsoEpochId, 
+            priceThreshold,
+            ftsoFeedId
+        ));
+        allMarkets.push(market);
+        marketTypes[market] = 0; // Set market type to 0 for TwoPartyMarket
+        emit MarketCreated(market, question, block.timestamp + duration, msg.sender, 0);
+    }
 
 
     function createLMSRMarket(

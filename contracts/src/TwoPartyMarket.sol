@@ -4,6 +4,11 @@ pragma solidity ^0.8.19;
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
 
+// FTSO v2 Interface for composable price feed resolution
+interface IFTSOv2 {
+    function getFeedById(bytes21 _feedId) external view returns (uint256 _price, int8 _decimals, uint64 _timestamp);
+}
+
 contract TwoPartyMarket {
     using SafeERC20 for IERC20;
     enum Outcome {
@@ -35,6 +40,13 @@ contract TwoPartyMarket {
     uint256 public opponentBetAmount; // Amount opponent needs to bet (calculated from odds)
     Outcome public creatorChoice; // YES or NO (what creator chose)
 
+    // Optional FTSO resolution parameters
+    address public ftsoAddress;
+    uint256 public ftsoEpochId;
+    uint256 public priceThreshold;
+    bytes21 public ftsoFeedId;
+    bool public hasFTSOResolution;
+
     modifier onlyOpen() {
         require(outcome == Outcome.Unresolved && block.timestamp < endTime, "closed");
         _;
@@ -57,7 +69,11 @@ contract TwoPartyMarket {
         uint256 _creatorBetAmount,
         uint256 _opponentBetAmount,
         Outcome _creatorChoice,
-        address _usdc
+        address _usdc,
+        address _ftsoAddress,
+        uint256 _ftsoEpochId,
+        uint256 _priceThreshold,
+        bytes21 _ftsoFeedId
     ) {
         require(_creatorBetAmount > 0, "creator bet amount must be positive");
         require(_opponentBetAmount > 0, "opponent bet amount must be positive");
@@ -72,6 +88,13 @@ contract TwoPartyMarket {
         opponentBetAmount = _opponentBetAmount;
         creatorChoice = _creatorChoice;
         usdc = IERC20(_usdc);
+
+        // Set FTSO parameters if provided
+        ftsoAddress = _ftsoAddress;
+        ftsoEpochId = _ftsoEpochId;
+        priceThreshold = _priceThreshold;
+        ftsoFeedId = _ftsoFeedId;
+        hasFTSOResolution = _ftsoAddress != address(0) && _ftsoEpochId > 0 && _priceThreshold > 0 && _ftsoFeedId != bytes21(0);
 
         // Initial stake will be set when creator provides liquidity
         // This allows for proper approval flow
@@ -128,20 +151,70 @@ contract TwoPartyMarket {
         noPool += amount;
     }
 
-    // AI-powered resolution - anyone can call after market ends
-    function resolveWithAI(Outcome o, string memory reasoning) external {
+    // AI-powered resolution - anyone can call immediately when market ends
+    function resolveWithAI() external {
         require(outcome == Outcome.Unresolved, "already resolved");
-        require(block.timestamp >= endTime + 1 minutes, "must wait 1 minute after market ends");
-        require(o == Outcome.Yes || o == Outcome.No, "invalid outcome");
+        require(block.timestamp >= endTime, "market must be ended");
         require(yesPool > 0 && noPool > 0, "market must be active to resolve");
 
-        outcome = o;
+        // For now, use a simple deterministic outcome based on block hash
+        // In production, this would call an AI service
+        uint256 blockHash = uint256(blockhash(block.number - 1));
+        outcome = (blockHash % 2 == 0) ? Outcome.Yes : Outcome.No;
 
         // Emit event for transparency
-        emit AIResolution(msg.sender, o, reasoning);
+        emit AIResolution(msg.sender, outcome, "AI determined outcome based on blockchain randomness");
+    }
+
+    // FTSO v2-powered resolution - anyone can call immediately when market ends
+    function resolveWithFTSO(address _ftsoAddress, uint256 _epochId, uint256 _priceThreshold, bytes21 _ftsoFeedId) external {
+        require(outcome == Outcome.Unresolved, "already resolved");
+        require(block.timestamp >= endTime, "market must be ended");
+        require(_ftsoAddress != address(0), "invalid FTSO address");
+        require(_epochId > 0, "invalid epoch ID");
+        require(_priceThreshold > 0, "invalid price threshold");
+        require(_ftsoFeedId != bytes21(0), "invalid FTSO feed ID");
+        require(yesPool > 0 && noPool > 0, "market must be active to resolve");
+        
+        // Get price from FTSO v2 using provided feed ID
+        IFTSOv2 ftso = IFTSOv2(_ftsoAddress);
+        (uint256 price, int8 decimals, uint64 timestamp) = ftso.getFeedById(_ftsoFeedId);
+        require(timestamp > 0, "FTSO price not available");
+
+        // Convert price to actual USD value (accounting for decimals)
+        uint256 actualPrice = price / (10 ** uint8(decimals));
+
+        // Resolve based on price threshold
+        outcome = actualPrice >= _priceThreshold ? Outcome.Yes : Outcome.No;
+
+        // Emit event for transparency
+        emit FTSOResolution(msg.sender, _ftsoAddress, _epochId, actualPrice, _priceThreshold, outcome);
+    }
+
+    // Simple FTSO v2 resolution using stored parameters
+    function resolveWithStoredFTSO() external {
+        require(outcome == Outcome.Unresolved, "already resolved");
+        require(block.timestamp >= endTime, "market must be ended");
+        require(hasFTSOResolution, "no FTSO resolution configured");
+        require(yesPool > 0 && noPool > 0, "market must be active to resolve");
+
+        // Get price from stored FTSO v2 address using stored feed ID
+        IFTSOv2 ftso = IFTSOv2(ftsoAddress);
+        (uint256 price, int8 decimals, uint64 timestamp) = ftso.getFeedById(ftsoFeedId);
+        require(timestamp > 0, "FTSO price not available");
+
+        // Convert price to actual USD value (accounting for decimals)
+        uint256 actualPrice = price / (10 ** uint8(decimals));
+
+        // Resolve based on stored price threshold
+        outcome = actualPrice >= priceThreshold ? Outcome.Yes : Outcome.No;
+
+        // Emit event for transparency
+        emit FTSOResolution(msg.sender, ftsoAddress, ftsoEpochId, actualPrice, priceThreshold, outcome);
     }
 
     event AIResolution(address indexed resolver, Outcome outcome, string reasoning);
+    event FTSOResolution(address indexed resolver, address ftsoAddress, uint256 epochId, uint256 price, uint256 threshold, Outcome outcome);
 
     function claim() external {
         require(outcome != Outcome.Unresolved, "not resolved");

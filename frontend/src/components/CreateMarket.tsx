@@ -39,13 +39,364 @@ export function CreateMarket() {
   const [oddsRatio, setOddsRatio] = useState("1:2"); // Default odds ratio
   const [creatorSide, setCreatorSide] = useState<"yes" | "no">("yes");
 
+  // FTSO market fields (hardcoded address)
+  const ftsoAddress = "0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d";
+  const [ftsoEpochId, setFtsoEpochId] = useState("");
+  const [priceThreshold, setPriceThreshold] = useState("");
+  const [selectedFeedId, setSelectedFeedId] = useState(
+    "0x01464c522f55534400000000000000000000000000"
+  ); // Default to FLR/USD
+  const [useFTSO, setUseFTSO] = useState(false);
+  const [feedSearchTerm, setFeedSearchTerm] = useState("");
+
+  // FTSO Feeds Data
+  const ftsoFeeds = [
+    {
+      name: "FLR/USD",
+      feedId: "0x01464c522f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "SGB/USD",
+      feedId: "0x015347422f55534400000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "BTC/USD",
+      feedId: "0x014254432f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "XRP/USD",
+      feedId: "0x015852502f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "LTC/USD",
+      feedId: "0x014c54432f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "XLM/USD",
+      feedId: "0x01584c4d2f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "DOGE/USD",
+      feedId: "0x01444f47452f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ADA/USD",
+      feedId: "0x014144412f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ALGO/USD",
+      feedId: "0x01414c474f2f555344000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "ETH/USD",
+      feedId: "0x014554482f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "FIL/USD",
+      feedId: "0x0146494c2f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ARB/USD",
+      feedId: "0x014152422f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "AVAX/USD",
+      feedId: "0x01415641582f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "BNB/USD",
+      feedId: "0x01424e422f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "POL/USD",
+      feedId: "0x01504f4c2f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "SOL/USD",
+      feedId: "0x01534f4c2f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "USDC/USD",
+      feedId: "0x01555344432f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "USDT/USD",
+      feedId: "0x01555344542f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "XDC/USD",
+      feedId: "0x015844432f55534400000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "TRX/USD",
+      feedId: "0x015452582f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "LINK/USD",
+      feedId: "0x014c494e4b2f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ATOM/USD",
+      feedId: "0x0141544f4d2f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "DOT/USD",
+      feedId: "0x01444f542f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "TON/USD",
+      feedId: "0x01544f4e2f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ICP/USD",
+      feedId: "0x014943502f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "SHIB/USD",
+      feedId: "0x01534849422f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "USDS/USD",
+      feedId: "0x01555344532f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "BCH/USD",
+      feedId: "0x014243482f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "NEAR/USD",
+      feedId: "0x014e4541522f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "LEO/USD",
+      feedId: "0x014c454f2f55534400000000000000000000000000",
+      risk: "🔴",
+    },
+    {
+      name: "UNI/USD",
+      feedId: "0x01554e492f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ETC/USD",
+      feedId: "0x014554432f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "WIF/USD",
+      feedId: "0x015749462f55534400000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "BONK/USD",
+      feedId: "0x01424f4e4b2f555344000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "JUP/USD",
+      feedId: "0x014a55502f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "ETHFI/USD",
+      feedId: "0x0145544846492f5553440000000000000000000000",
+      risk: "🔴",
+    },
+    {
+      name: "ENA/USD",
+      feedId: "0x01454e412f55534400000000000000000000000000",
+      risk: "🔴",
+    },
+    {
+      name: "PYTH/USD",
+      feedId: "0x01505954482f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "HNT/USD",
+      feedId: "0x01484e542f55534400000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "SUI/USD",
+      feedId: "0x015355492f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "PEPE/USD",
+      feedId: "0x01504550452f555344000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "QNT/USD",
+      feedId: "0x01514e542f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "AAVE/USD",
+      feedId: "0x01414156452f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "S/USD",
+      feedId: "0x01532f555344000000000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "ONDO/USD",
+      feedId: "0x014f4e444f2f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "TAO/USD",
+      feedId: "0x0154414f2f55534400000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "FET/USD",
+      feedId: "0x014645542f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "RENDER/USD",
+      feedId: "0x0152454e4445522f55534400000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "NOT/USD",
+      feedId: "0x014e4f542f55534400000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "RUNE/USD",
+      feedId: "0x0152554e452f555344000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "TRUMP/USD",
+      feedId: "0x015452554d502f5553440000000000000000000000",
+      risk: "🔴",
+    },
+    {
+      name: "USDX/USD",
+      feedId: "0x01555344582f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "JOULE/USD",
+      feedId: "0x014a4f554c452f5553440000000000000000000000",
+      risk: "⚫",
+    },
+    {
+      name: "HBAR/USD",
+      feedId: "0x01484241522f555344000000000000000000000000",
+      risk: "🟡",
+    },
+    {
+      name: "PENGU/USD",
+      feedId: "0x0150454e47552f5553440000000000000000000000",
+      risk: "🔴",
+    },
+    {
+      name: "HYPE/USD",
+      feedId: "0x01485950452f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "APT/USD",
+      feedId: "0x014150542f55534400000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "PAXG/USD",
+      feedId: "0x01504158472f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "BERA/USD",
+      feedId: "0x01424552412f555344000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "OP/USD",
+      feedId: "0x014f502f5553440000000000000000000000000000",
+      risk: "🟢",
+    },
+    {
+      name: "PUMP/USD",
+      feedId: "0x0150554d502f555344000000000000000000000000",
+      risk: "🟡",
+    },
+  ];
+
+  // Filter FTSO feeds based on search term
+  const filteredFeeds = ftsoFeeds.filter((feed) =>
+    feed.name.toLowerCase().includes(feedSearchTerm.toLowerCase())
+  );
+
   // Calculate opponent bet amount based on odds ratio
   const calculateOpponentBetAmount = (): number => {
-    const [creatorOdds, opponentOdds] = oddsRatio.split(":").map(Number);
-    if (creatorOdds <= 0 || opponentOdds <= 0) return 0;
-    const creatorAmount = parseFloat(creatorBetAmount) || 0;
-    return (creatorAmount * opponentOdds) / creatorOdds;
+    if (!oddsRatio || !creatorBetAmount) return 0;
+    const [creator, opponent] = oddsRatio.split(":").map(Number);
+    if (creator === 0) return 0;
+    return (Number(creatorBetAmount) * opponent) / creator;
   };
+
+  // Calculate FTSO epoch ID for a given timestamp
+  const calculateFTSOEpoch = (timestamp: number): number => {
+    // FTSO epochs are 90 seconds long
+    const epochDuration = 90;
+    return Math.floor(timestamp / epochDuration);
+  };
+
+  // Calculate future epoch ID based on market duration
+  const getFutureEpochId = (): number => {
+    const now = Math.floor(Date.now() / 1000);
+    const totalDurationInSeconds =
+      parseInt(durationInput.days || "0") * 24 * 60 * 60 +
+      parseInt(durationInput.hours || "0") * 60 * 60 +
+      parseInt(durationInput.minutes || "0") * 60 +
+      parseInt(durationInput.seconds || "0");
+    const futureTime = now + totalDurationInSeconds;
+    return calculateFTSOEpoch(futureTime);
+  };
+
+  // Auto-calculate epoch ID when duration or FTSO is enabled
+  useEffect(() => {
+    if (useFTSO && durationInput) {
+      const epochId = getFutureEpochId();
+      setFtsoEpochId(epochId.toString());
+    }
+  }, [useFTSO, durationInput]);
 
   const opponentBetAmount = calculateOpponentBetAmount();
 
@@ -222,21 +573,44 @@ export function CreateMarket() {
         ); // USDC has 6 decimals
         const creatorChoseYes = creatorSide === "yes";
 
-        // Create the market (USDC will be transferred later when providing initial bet)
-        writeContract({
-          address: MARKET_FACTORY_ADDRESS,
-          abi: MarketFactoryABI,
-          functionName: "createTwoPartyMarket",
-          args: [
-            question,
-            BigInt(durationValue),
-            creatorBetAmountUSDC,
-            opponentBetAmountUSDC,
-            creatorChoseYes ? 1 : 2, // 1 = Yes, 2 = No (Outcome enum)
-            MOCK_USDC_ADDRESS, // USDC token address
-          ],
-        });
-      } else {
+        // Choose between regular or FTSO market creation
+        if (useFTSO && ftsoAddress && priceThreshold) {
+          // Create FTSO-based market
+          const priceThresholdScaled = parseUnits(priceThreshold, 5); // FTSO prices are scaled by 5 decimals
+          writeContract({
+            address: MARKET_FACTORY_ADDRESS,
+            abi: MarketFactoryABI,
+            functionName: "createTwoPartyMarketWithFTSO",
+            args: [
+              question,
+              BigInt(durationValue),
+              creatorBetAmountUSDC,
+              opponentBetAmountUSDC,
+              creatorChoseYes ? 1 : 2, // 1 = Yes, 2 = No (Outcome enum)
+              MOCK_USDC_ADDRESS, // USDC token address
+              ftsoAddress, // FTSO contract address
+              BigInt(getFutureEpochId()), // Auto-calculated FTSO epoch ID
+              priceThresholdScaled, // Price threshold (scaled by 5 decimals)
+              selectedFeedId, // FTSO feed ID
+            ],
+          });
+        } else {
+          // Create regular market
+          writeContract({
+            address: MARKET_FACTORY_ADDRESS,
+            abi: MarketFactoryABI,
+            functionName: "createTwoPartyMarket",
+            args: [
+              question,
+              BigInt(durationValue),
+              creatorBetAmountUSDC,
+              opponentBetAmountUSDC,
+              creatorChoseYes ? 1 : 2, // 1 = Yes, 2 = No (Outcome enum)
+              MOCK_USDC_ADDRESS, // USDC token address
+            ],
+          });
+        }
+      } else if (marketType === "LMSR") {
         // Create LMSR market with USDC
         const liquidityUSDC = parseUnits(initialLiquidity, 6); // USDC has 6 decimals
         const betaParameter = getBetaParameter();
@@ -313,7 +687,7 @@ export function CreateMarket() {
                 Someone needs to accept your challenge to start trading
               </div>
             </button>
-            <button
+            {/* <button
               type="button"
               onClick={() => setMarketType("LMSR")}
               className={`p-4 rounded-lg border-2 transition-all text-left ${
@@ -328,7 +702,7 @@ export function CreateMarket() {
               <div className="text-sm text-gray-600 mt-1">
                 Trade immediately with continuous liquidity
               </div>
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -501,6 +875,127 @@ export function CreateMarket() {
                 Example: 1:2 means if you bet 10 USDC, opponent needs to bet 20
                 USDC
               </p>
+            </div>
+
+            {/* FTSO Resolution (Optional) */}
+            <div>
+              <label className="flex items-center mb-2">
+                <input
+                  type="checkbox"
+                  checked={useFTSO}
+                  onChange={(e) => setUseFTSO(e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Use FTSO Price Feed for Resolution
+                </span>
+              </label>
+
+              {useFTSO && (
+                <div className="space-y-3 p-3 bg-green-50 rounded-md border border-green-200">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      FTSO Price Feed
+                    </label>
+
+                    {/* Search Input */}
+                    <input
+                      type="text"
+                      value={feedSearchTerm}
+                      onChange={(e) => setFeedSearchTerm(e.target.value)}
+                      placeholder="Search assets (e.g., BTC, ETH, FLR)..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm mb-2"
+                    />
+
+                    {/* Dropdown with better styling */}
+                    <div className="relative">
+                      <select
+                        value={selectedFeedId}
+                        onChange={(e) => setSelectedFeedId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                        required={useFTSO}
+                        size={Math.min(filteredFeeds.length, 8)} // Show up to 8 options at once
+                      >
+                        {filteredFeeds.length === 0 ? (
+                          <option disabled>No feeds found</option>
+                        ) : (
+                          filteredFeeds.map((feed) => (
+                            <option key={feed.feedId} value={feed.feedId}>
+                              {feed.risk} {feed.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+
+                      {/* Show count of results */}
+                      {feedSearchTerm && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {filteredFeeds.length} feed
+                          {filteredFeeds.length !== 1 ? "s" : ""} found
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Selected Feed Display */}
+                    {selectedFeedId && (
+                      <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-green-600">✓</span>
+                            <span className="text-sm font-medium text-green-800">
+                              Selected Feed:
+                            </span>
+                            <span className="text-sm text-green-700">
+                              {
+                                ftsoFeeds.find(
+                                  (feed) => feed.feedId === selectedFeedId
+                                )?.risk
+                              }{" "}
+                              {
+                                ftsoFeeds.find(
+                                  (feed) => feed.feedId === selectedFeedId
+                                )?.name
+                              }
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFeedId("")}
+                            className="text-xs text-red-600 hover:text-red-800 underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <p className="text-xs text-green-600 mt-1">
+                          This price feed will be used to resolve your market
+                        </p>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-500 mt-1">
+                      Select the price feed for market resolution
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Price Threshold (USD)
+                    </label>
+                    <input
+                      type="number"
+                      value={priceThreshold}
+                      onChange={(e) => setPriceThreshold(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                      placeholder="50000"
+                      step="0.01"
+                      min="0"
+                      required={useFTSO}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Price ≥ threshold = YES, Price &lt; threshold = NO
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Preview */}

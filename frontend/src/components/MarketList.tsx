@@ -8,11 +8,7 @@ import { Hex } from "viem";
 
 export function MarketList() {
   // Read all markets from the factory
-  const {
-    data: allMarkets,
-    isLoading,
-    refetch,
-  } = useReadContract({
+  const { data: allMarkets, isLoading } = useReadContract({
     address: MARKET_FACTORY_ADDRESS as Hex,
     abi: MarketFactoryABI,
     functionName: "getAllMarkets",
@@ -48,12 +44,9 @@ export function MarketList() {
         </div>
       ) : (
         <div className="space-y-4">
-          {allMarkets
-            // .slice()
-            // .reverse()
-            .map((marketAddress: `0x${string}`) => (
-              <MarketCard key={marketAddress} address={marketAddress} />
-            ))}
+          {allMarkets.map((marketAddress: `0x${string}`) => (
+            <MarketCard key={marketAddress} address={marketAddress} />
+          ))}
         </div>
       )}
     </div>
