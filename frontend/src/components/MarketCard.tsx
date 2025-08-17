@@ -654,66 +654,69 @@ export function MarketCard({
   };
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm p-6 text-black">
+    <div className="bg-white rounded-2xl border-2 border-gray-100 shadow-lg p-8 text-black hover:shadow-xl transition-all duration-300">
       {/* Market Info */}
-      <div className="mb-4">
-        <div className="flex items-start justify-between mb-2">
-          <h3 className="text-lg font-semibold text-gray-900 flex-1">
+      <div className="mb-6">
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="text-2xl font-bold text-gray-900 flex-1 leading-tight">
             {displayQuestion}
           </h3>
           <div
-            className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
+            className={`ml-4 px-4 py-2 rounded-full text-sm font-bold ${
               isLMSRMarket
-                ? "bg-purple-100 text-purple-700"
-                : "bg-blue-100 text-blue-700"
+                ? "bg-purple-100 text-purple-700 border-2 border-purple-200"
+                : "bg-blue-100 text-blue-700 border-2 border-blue-200"
             }`}
           >
             {isLMSRMarket ? "🤖 LMSR" : "⚔️ Challenge"}
           </div>
         </div>
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>Market:{address}</span>
-          <span>
-            Status:{" "}
+
+        {/* Simplified Status Display */}
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-lg font-semibold text-gray-700">
             {isOutcomeResolved()
-              ? `Resolved: ${getOutcomeText()}`
+              ? `🏆 Resolved: ${getOutcomeText()}`
               : isLMSRMarket
                 ? isMarketClosed()
-                  ? "Closed"
-                  : "Active"
+                  ? "⏰ Closed"
+                  : "🟢 Active"
                 : isWaitingForOpponent()
-                  ? "Waiting for Opponent"
+                  ? "⏳ Waiting for Opponent"
                   : isMarketClosed()
-                    ? "Closed"
-                    : "Active"}
-          </span>
-        </div>
-        {endTime && (
-          <div className="text-sm text-gray-600 mt-1">
-            Ends:{" "}
-            {new Date(Number(endTime) * 1000).toLocaleString(undefined, {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+                    ? "⏰ Closed"
+                    : "🟢 Active"}
           </div>
-        )}
+          {endTime && (
+            <div className="text-lg font-medium text-gray-600">
+              Ends:{" "}
+              {new Date(Number(endTime) * 1000).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </div>
+          )}
+        </div>
 
-        {/* USDC Balance Display */}
+        {/* USDC Balance Display - Bigger and more prominent */}
         {userAddress && (
-          <div className="text-sm text-gray-600 mt-1">
-            Your USDC Balance:{" "}
-            <span className="font-medium text-green-600">
-              {usdcBalance ? formatUnits(usdcBalance as bigint, 6) : "0"} USDC
-            </span>
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border-2 border-green-200">
+            <div className="text-center">
+              <div className="text-sm font-medium text-green-700 mb-1">
+                Your Balance
+              </div>
+              <div className="text-2xl font-bold text-green-800">
+                {usdcBalance ? formatUnits(usdcBalance as bigint, 6) : "0"} USDC
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* Actions */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {/* Accept Challenge (for waiting markets or active markets with only one side bet) - TwoParty markets only */}
         {!isMarketClosed() &&
           (isWaitingForOpponent() ||
@@ -723,23 +726,39 @@ export function MarketCard({
                 (noPool as bigint) === BigInt(0)))) &&
           userAddress !== creator &&
           !isLMSRMarket && (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <h4 className="text-md font-semibold text-yellow-800 mb-2">
-                Accept Challenge
+            <div className="p-6 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-2xl">
+              <h4 className="text-xl font-bold text-yellow-800 mb-3 text-center">
+                🎯 Accept Challenge
               </h4>
-              <p className="text-sm text-yellow-700 mb-3">
-                Creator bet {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC
-                on {creatorChoice === 1 ? "YES" : "NO"}. You need{" "}
-                {formatUnits(getRequiredOpponentAmount() || BigInt(0), 6)} USDC
-                to bet on {creatorChoice === 1 ? "NO" : "YES"}.
+              <p className="text-lg text-yellow-700 mb-4 text-center">
+                Creator bet{" "}
+                <span className="font-bold">
+                  {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC
+                </span>{" "}
+                on{" "}
+                <span className="font-bold">
+                  {creatorChoice === 1 ? "YES" : "NO"}
+                </span>
+              </p>
+              <p className="text-lg text-yellow-700 mb-4 text-center">
+                You need{" "}
+                <span className="font-bold">
+                  {formatUnits(getRequiredOpponentAmount() || BigInt(0), 6)}{" "}
+                  USDC
+                </span>{" "}
+                to bet on{" "}
+                <span className="font-bold">
+                  {creatorChoice === 1 ? "NO" : "YES"}
+                </span>
               </p>
               <button
                 onClick={acceptChallenge}
                 disabled={isPending || isLoading}
-                className="w-full px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-400"
+                className="w-full px-6 py-4 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-xl hover:from-yellow-600 hover:to-orange-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
               >
-                Accept Challenge (
-                {formatUnits(getRequiredOpponentAmount() || BigInt(0), 6)} USDC)
+                {isLoading
+                  ? "Processing..."
+                  : `Accept Challenge (${formatUnits(getRequiredOpponentAmount() || BigInt(0), 6)} USDC)`}
               </button>
             </div>
           )}
@@ -753,37 +772,57 @@ export function MarketCard({
                 (noPool as bigint) === BigInt(0)))) &&
           userAddress === creator &&
           !isLMSRMarket && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl">
               {yesPool === BigInt(0) && noPool === BigInt(0) ? (
                 <>
-                  <h4 className="text-md font-semibold text-green-800 mb-2">
-                    Provide Initial Liquidity
+                  <h4 className="text-xl font-bold text-blue-800 mb-3 text-center">
+                    🚀 Start the Challenge
                   </h4>
-                  <p className="text-sm text-green-700 mb-3">
-                    You need to provide your initial stake of{" "}
-                    {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC on{" "}
-                    {creatorChoice === 1 ? "YES" : "NO"} to start the market.
+                  <p className="text-lg text-blue-700 mb-4 text-center">
+                    Provide your initial stake of{" "}
+                    <span className="font-bold">
+                      {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC
+                    </span>{" "}
+                    on{" "}
+                    <span className="font-bold">
+                      {creatorChoice === 1 ? "YES" : "NO"}
+                    </span>
                   </p>
                   <button
                     onClick={provideInitialBet}
                     disabled={isPending || isLoading}
-                    className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
+                    className="w-full px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:from-blue-600 hover:to-indigo-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                   >
-                    Provide Initial Bet (
-                    {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC)
+                    {isLoading
+                      ? "Processing..."
+                      : `Start Challenge (${formatUnits(creatorBetAmount || BigInt(0), 6)} USDC)`}
                   </button>
                 </>
               ) : (
                 <>
-                  <h4 className="text-md font-semibold text-blue-800 mb-2">
-                    Waiting for Opponent
+                  <h4 className="text-xl font-bold text-blue-800 mb-3 text-center">
+                    ⏳ Waiting for Opponent
                   </h4>
-                  <p className="text-sm text-blue-700">
-                    You bet {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC
-                    on {creatorChoice === 1 ? "YES" : "NO"}. Waiting for someone
-                    to bet{" "}
-                    {formatUnits(getRequiredOpponentAmount() || BigInt(0), 6)}{" "}
-                    USDC on {creatorChoice === 1 ? "NO" : "YES"}.
+                  <p className="text-lg text-blue-700 text-center">
+                    You bet{" "}
+                    <span className="font-bold">
+                      {formatUnits(creatorBetAmount || BigInt(0), 6)} USDC
+                    </span>{" "}
+                    on{" "}
+                    <span className="font-bold">
+                      {creatorChoice === 1 ? "YES" : "NO"}
+                    </span>
+                  </p>
+                  <p className="text-lg text-blue-700 text-center mt-2">
+                    Waiting for someone to bet{" "}
+                    <span className="font-bold">
+                      {formatUnits(getRequiredOpponentAmount() || BigInt(0), 6)}{" "}
+                      USDC
+                    </span>{" "}
+                    on{" "}
+                    <span className="font-bold">
+                      {creatorChoice === 1 ? "NO" : "YES"}
+                    </span>
                   </p>
                 </>
               )}
@@ -795,74 +834,86 @@ export function MarketCard({
           !isOutcomeResolved() &&
           isActiveMarket() &&
           isLMSRMarket && (
-            <div className="bg-purple-50 rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                  Continuous Liquidity
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 space-y-6 border-2 border-purple-200">
+              <div className="flex items-center justify-center">
+                <div className="text-sm text-purple-600 bg-purple-100 px-4 py-2 rounded-full border-2 border-purple-200 font-medium">
+                  💰 Continuous Trading
                 </div>
               </div>
 
               {/* Current Prices Display */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="bg-green-100 p-3 rounded-lg text-center">
-                  <div className="font-semibold text-green-800">YES</div>
-                  <div className="text-lg font-bold text-green-600">
-                    {yesProb ? (Number(yesProb) / 1e16).toFixed(2) : "50.00"}%
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-gradient-to-br from-green-100 to-emerald-100 p-4 rounded-xl text-center border-2 border-green-200">
+                  <div className="font-bold text-green-800 text-lg mb-1">
+                    YES
                   </div>
-                  <div className="text-xs text-green-600">per share</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    {yesProb ? (Number(yesProb) / 1e16).toFixed(1) : "50.0"}%
+                  </div>
+                  <div className="text-sm text-green-600 font-medium">
+                    per share
+                  </div>
                 </div>
-                <div className="bg-red-100 p-3 rounded-lg text-center">
-                  <div className="font-semibold text-red-800">NO</div>
-                  <div className="text-lg font-bold text-red-600">
-                    {noProb ? (Number(noProb) / 1e16).toFixed(2) : "50.00"}%
+                <div className="bg-gradient-to-br from-red-100 to-pink-100 p-4 rounded-xl text-center border-2 border-red-200">
+                  <div className="font-bold text-red-800 text-lg mb-1">NO</div>
+                  <div className="text-2xl font-bold text-red-600">
+                    {noProb ? (Number(noProb) / 1e16).toFixed(1) : "50.0"}%
                   </div>
-                  <div className="text-xs text-red-600">per share</div>
+                  <div className="text-sm text-red-600 font-medium">
+                    per share
+                  </div>
                 </div>
               </div>
 
               {/* Your Holdings */}
               {userAddress && (userYesShares || userNoShares) && (
-                <div className="bg-white p-3 rounded-lg border">
-                  <h5 className="font-medium text-gray-800 mb-2">
-                    Your Holdings
+                <div className="bg-white p-4 rounded-xl border-2 border-gray-200">
+                  <h5 className="font-bold text-gray-800 mb-3 text-center text-lg">
+                    📊 Your Holdings
                   </h5>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      YES: {userYesShares ? formatEther(userYesShares) : "0"}{" "}
-                      shares
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                      <div className="font-bold text-green-700">YES</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {userYesShares ? formatEther(userYesShares) : "0"}
+                      </div>
                     </div>
-                    <div>
-                      NO: {userNoShares ? formatEther(userNoShares) : "0"}{" "}
-                      shares
+                    <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                      <div className="font-bold text-red-700">NO</div>
+                      <div className="text-lg font-bold text-red-600">
+                        {userNoShares ? formatEther(userNoShares) : "0"}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Buy Interface */}
-              <div className="space-y-3">
-                <h5 className="font-medium text-gray-800">Buy Shares</h5>
+              <div className="space-y-4">
+                <h5 className="font-bold text-gray-800 text-center text-lg">
+                  💸 Buy Shares
+                </h5>
 
                 <input
                   type="number"
-                  placeholder="USDC Amount"
+                  placeholder="Enter USDC amount..."
                   value={lmsrAmount}
                   onChange={(e) => setLmsrAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-lg font-medium"
                 />
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-4">
                   <button
                     onClick={buyLMSRYes}
                     disabled={!lmsrAmount || isPending || isLoading}
-                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm font-medium"
+                    className="px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                   >
                     Buy YES
                   </button>
                   <button
                     onClick={buyLMSRNo}
                     disabled={!lmsrAmount || isPending || isLoading}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 text-sm font-medium"
+                    className="px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl hover:from-red-600 hover:to-pink-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                   >
                     Buy NO
                   </button>
@@ -871,24 +922,26 @@ export function MarketCard({
 
               {/* Sell Interface */}
               {userAddress && (userYesShares || userNoShares) && (
-                <div className="space-y-3 border-t pt-3">
-                  <h5 className="font-medium text-gray-800">Sell Shares</h5>
+                <div className="space-y-4 border-t-2 border-purple-200 pt-4">
+                  <h5 className="font-bold text-gray-800 text-center text-lg">
+                    💰 Sell Shares
+                  </h5>
 
                   <input
                     type="number"
-                    placeholder="Shares to Sell"
+                    placeholder="Enter shares to sell..."
                     value={sellShares}
                     onChange={(e) => setSellShares(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-lg font-medium"
                   />
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={sellLMSRYes}
                       disabled={
                         !sellShares || !userYesShares || isPending || isLoading
                       }
-                      className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm font-medium"
+                      className="px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                     >
                       Sell YES
                     </button>
@@ -897,7 +950,7 @@ export function MarketCard({
                       disabled={
                         !sellShares || !userNoShares || isPending || isLoading
                       }
-                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 text-sm font-medium"
+                      className="px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl hover:from-red-600 hover:to-pink-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                     >
                       Sell NO
                     </button>
@@ -905,8 +958,8 @@ export function MarketCard({
                 </div>
               )}
 
-              <div className="text-xs text-purple-600 bg-purple-100 p-2 rounded">
-                💡 Prices adjust automatically based on trading activity.
+              <div className="text-sm text-purple-600 bg-purple-100 p-3 rounded-xl border border-purple-200 text-center font-medium">
+                💡 Prices adjust automatically based on trading activity
               </div>
             </div>
           )}
@@ -918,69 +971,78 @@ export function MarketCard({
           !isLMSRMarket &&
           (yesPool as bigint) > BigInt(0) &&
           (noPool as bigint) > BigInt(0) && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <h4 className="text-md font-semibold text-green-800 mb-2">
-                🎯 Challenge Active
+            <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl">
+              <h4 className="text-xl font-bold text-green-800 mb-4 text-center">
+                🎯 Challenge Active!
               </h4>
-              <p className="text-sm text-green-700 mb-3">
-                The challenge is now active! Both sides have placed their bets.
+              <p className="text-lg text-green-700 mb-4 text-center">
+                Both sides have placed their bets. The challenge is live!
               </p>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-white p-3 rounded border">
-                  <div className="font-medium text-green-600">YES Pool</div>
-                  <div className="text-lg font-bold">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-white p-4 rounded-xl border-2 border-green-200 text-center">
+                  <div className="font-bold text-green-600 text-lg mb-1">
+                    YES Pool
+                  </div>
+                  <div className="text-2xl font-bold text-green-800">
                     {formatUnits((yesPool as bigint) || BigInt(0), 6)} USDC
                   </div>
                 </div>
-                <div className="bg-white p-3 rounded border">
-                  <div className="font-medium text-red-600">NO Pool</div>
-                  <div className="text-lg font-bold">
+                <div className="bg-white p-4 rounded-xl border-2 border-red-200 text-center">
+                  <div className="font-bold text-red-600 text-lg mb-1">
+                    NO Pool
+                  </div>
+                  <div className="text-2xl font-bold text-red-800">
                     {formatUnits((noPool as bigint) || BigInt(0), 6)} USDC
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-green-600 mt-3">
-                Market will resolve automatically when the end time is reached.
+              <p className="text-sm text-green-600 text-center font-medium">
+                ⏰ Market will resolve automatically when the end time is
+                reached
               </p>
             </div>
           )}
 
         {/* Winner Celebration Message */}
         {isOutcomeResolved() && canClaim() && userAddress && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-            <div className="text-2xl mb-2">🎉</div>
-            <h4 className="text-lg font-bold text-green-800 mb-2">You Won!</h4>
-            <p className="text-sm text-green-700 mb-3">
-              Congratulations! You bet on {Number(yesStake) > 0 ? "YES" : "NO"}{" "}
-              and the market resolved to {getOutcomeText()}.
+          <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl text-center">
+            <div className="text-4xl mb-4">🎉</div>
+            <h4 className="text-2xl font-bold text-green-800 mb-3">You Won!</h4>
+            <p className="text-lg text-green-700 mb-4">
+              Congratulations! You bet on{" "}
+              <span className="font-bold">
+                {Number(yesStake) > 0 ? "YES" : "NO"}
+              </span>{" "}
+              and the market resolved to{" "}
+              <span className="font-bold">{getOutcomeText()}</span>.
             </p>
 
             {/* Show FTSO price for resolved markets */}
             {(hasFTSOResolution as boolean) && (
-              <div className="mb-3 p-2 bg-white border border-green-300 rounded-lg">
+              <div className="mb-4 p-4 bg-white border-2 border-green-300 rounded-xl">
                 {ftsoPrice ? (
                   <>
-                    <p className="text-xs text-green-600 font-medium">
+                    <p className="text-sm text-green-600 font-bold mb-1">
                       Final FTSO Price
                     </p>
-                    <p className="text-sm font-bold text-green-800">
+                    <p className="text-xl font-bold text-green-800">
                       ${ftsoPrice}
                     </p>
                     {priceThreshold && typeof priceThreshold === "bigint" && (
-                      <p className="text-xs text-green-600">
+                      <p className="text-sm text-green-600">
                         Threshold: ${formatUnits(priceThreshold, 7)}
                       </p>
                     )}
                   </>
                 ) : (
                   <div className="text-center">
-                    <p className="text-xs text-green-600 font-medium mb-2">
+                    <p className="text-sm text-green-600 font-bold mb-2">
                       FTSO Price
                     </p>
                     <button
                       onClick={fetchFTSOPrice}
                       disabled={isLoadingPrice}
-                      className="px-3 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+                      className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 font-medium"
                     >
                       {isLoadingPrice ? "Loading..." : "Fetch Price"}
                     </button>
@@ -992,9 +1054,9 @@ export function MarketCard({
             <button
               onClick={claim}
               disabled={isPending || isLoading}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 font-semibold"
+              className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 disabled:bg-gray-400 text-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300"
             >
-              🎉 Claim Your Winnings
+              🏆 Claim Your Winnings
             </button>
           </div>
         )}
@@ -1004,14 +1066,20 @@ export function MarketCard({
           userAddress &&
           !canClaim() &&
           (Number(yesStake) > 0 || Number(noStake) > 0) && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
-              <div className="text-2xl mb-2">😔</div>
-              <h4 className="text-lg font-bold text-red-800 mb-2">You Lost</h4>
-              <p className="text-red-700 font-medium mb-2">
-                You bet on {Number(yesStake) > 0 ? "YES" : "NO"} but the market
-                resolved to {getOutcomeText()}
+            <div className="p-6 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-2xl text-center">
+              <div className="text-4xl mb-4">😔</div>
+              <h4 className="text-2xl font-bold text-red-800 mb-3">You Lost</h4>
+              <p className="text-lg text-red-700 font-bold mb-2">
+                You bet on{" "}
+                <span className="font-bold">
+                  {Number(yesStake) > 0 ? "YES" : "NO"}
+                </span>{" "}
+                but the market resolved to{" "}
+                <span className="font-bold">{getOutcomeText()}</span>
               </p>
-              <p className="text-red-600 text-sm">Better luck next time!</p>
+              <p className="text-red-600 text-lg font-medium">
+                Better luck next time!
+              </p>
             </div>
           )}
 
@@ -1020,16 +1088,18 @@ export function MarketCard({
           userAddress &&
           Number(yesStake) === 0 &&
           Number(noStake) === 0 && (
-            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-              <div className="text-2xl mb-2">📊</div>
-              <h4 className="text-lg font-bold text-gray-800 mb-2">
+            <div className="p-6 bg-gradient-to-r from-gray-50 to-slate-50 border-2 border-gray-200 rounded-2xl text-center">
+              <div className="text-4xl mb-4">📊</div>
+              <h4 className="text-2xl font-bold text-gray-800 mb-3">
                 Market Result
               </h4>
-              <p className="text-gray-700 font-medium">
+              <p className="text-lg text-gray-700 font-bold">
                 The market resolved to{" "}
-                <span className="font-bold">{getOutcomeText()}</span>
+                <span className="font-bold text-blue-600">
+                  {getOutcomeText()}
+                </span>
               </p>
-              <p className="text-gray-600 text-sm mt-1">
+              <p className="text-gray-600 text-lg mt-2 font-medium">
                 You didn&apos;t participate in this market.
               </p>
             </div>
@@ -1040,21 +1110,21 @@ export function MarketCard({
           !isOutcomeResolved() &&
           (!isActiveMarket() ||
             (Number(yesPool) === 0 && Number(noPool) === 0)) && (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
-              <div className="text-2xl mb-2">⚠️</div>
-              <h4 className="text-lg font-bold text-yellow-800 mb-2">
+            <div className="p-6 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-2xl text-center">
+              <div className="text-4xl mb-4">⚠️</div>
+              <h4 className="text-2xl font-bold text-yellow-800 mb-3">
                 Market Unfulfilled
               </h4>
-              <p className="text-yellow-700 font-medium mb-2">
+              <p className="text-lg text-yellow-700 font-bold mb-3">
                 This market did not receive sufficient participation to be
                 resolved.
               </p>
-              <p className="text-yellow-600 text-sm">
+              <p className="text-yellow-600 text-lg font-medium">
                 {Number(yesPool) === 0 && Number(noPool) === 0
                   ? "No initial liquidity was provided."
                   : "The opponent did not join the challenge."}
               </p>
-              <p className="text-yellow-600 text-xs mt-2">
+              <p className="text-yellow-600 text-sm mt-3 font-medium">
                 Participants can claim back their stakes.
               </p>
 
@@ -1063,7 +1133,7 @@ export function MarketCard({
                 <button
                   onClick={claim}
                   disabled={isPending || isLoading}
-                  className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-400 font-semibold"
+                  className="mt-4 px-6 py-4 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-xl hover:from-yellow-600 hover:to-orange-600 disabled:bg-gray-400 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   {isLoading ? "Claiming..." : "💰 Claim Stakes"}
                 </button>
@@ -1078,14 +1148,14 @@ export function MarketCard({
           Number(yesPool) > 0 &&
           Number(noPool) > 0 &&
           endTime && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-lg font-semibold text-blue-900 mb-3">
-                Choose Resolution Method
+            <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl">
+              <h4 className="text-xl font-bold text-blue-900 mb-4 text-center">
+                🎯 Choose Resolution Method
               </h4>
 
               {/* Resolution Method Selector */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-blue-700 mb-2">
+              <div className="mb-6">
+                <label className="block text-lg font-bold text-blue-700 mb-3 text-center">
                   Resolution Method
                 </label>
                 <select
@@ -1093,29 +1163,29 @@ export function MarketCard({
                   onChange={(e) =>
                     setSelectedResolutionMethod(e.target.value as "ftso" | "ai")
                   }
-                  className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  className="w-full px-4 py-3 border-2 border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-medium"
                 >
                   <option value="ftso">📊 FTSO Price Feed (Recommended)</option>
                   <option value="ai">🧠 AI Analysis</option>
                 </select>
-                <p className="text-xs text-blue-600 mt-1">
+                <p className="text-sm text-blue-600 mt-2 text-center font-medium">
                   Select how you want to resolve this market
                 </p>
 
                 {/* Selected Method Display */}
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-blue-600">🎯</span>
-                    <span className="text-sm font-medium text-blue-800">
-                      Selected Method:
+                <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
+                  <div className="flex items-center justify-center space-x-2">
+                    <span className="text-blue-600 text-lg">🎯</span>
+                    <span className="text-lg font-bold text-blue-800">
+                      Selected:
                     </span>
-                    <span className="text-sm text-blue-700">
+                    <span className="text-lg text-blue-700 font-medium">
                       {selectedResolutionMethod === "ftso"
                         ? "📊 FTSO Price Feed"
                         : "🧠 AI Analysis"}
                     </span>
                   </div>
-                  <p className="text-xs text-blue-600 mt-1">
+                  <p className="text-sm text-blue-600 mt-2 text-center font-medium">
                     {selectedResolutionMethod === "ftso"
                       ? "Will use real-time price data from Flare FTSO"
                       : "AI will analyze the question and determine the outcome"}
@@ -1128,15 +1198,15 @@ export function MarketCard({
                 <div className="mb-4">
                   {/* Current FTSO Price Display */}
                   {ftsoPrice && (
-                    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="mb-4 p-4 bg-green-50 border-2 border-green-200 rounded-xl">
                       <div className="text-center">
-                        <p className="text-sm text-green-700 font-medium">
+                        <p className="text-lg text-green-700 font-bold mb-1">
                           Current FTSO Price
                         </p>
-                        <p className="text-lg font-bold text-green-800">
+                        <p className="text-2xl font-bold text-green-800">
                           ${ftsoPrice}
                         </p>
-                        <p className="text-xs text-green-600 mt-1">
+                        <p className="text-sm text-green-600 mt-1 font-medium">
                           Threshold: ${formatUnits(priceThreshold as bigint, 7)}
                         </p>
                       </div>
@@ -1146,12 +1216,12 @@ export function MarketCard({
                   <button
                     onClick={resolveWithStoredFTSO}
                     disabled={isPending || isLoading}
-                    className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 flex items-center justify-center gap-2 mb-3"
+                    className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 disabled:bg-gray-400 flex items-center justify-center gap-3 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300 mb-4"
                   >
                     {isLoading ? "Resolving..." : "📊 Resolve with FTSO"}
                   </button>
 
-                  <div className="flex justify-between items-center text-xs text-green-600">
+                  <div className="flex justify-between items-center text-sm text-green-600 font-medium">
                     <span>Uses real-time price data from Flare FTSO</span>
                     {isLoadingPrice && <span>Loading price...</span>}
                   </div>
@@ -1160,15 +1230,15 @@ export function MarketCard({
 
               {/* AI Resolution Section */}
               {selectedResolutionMethod === "ai" && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <button
                     onClick={resolveWithAI}
                     disabled={isPending || isLoading}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+                    className="w-full px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:from-blue-600 hover:to-indigo-600 disabled:bg-gray-400 flex items-center justify-center gap-3 text-lg font-bold shadow-lg hover:shadow-xl transition-all duration-300"
                   >
                     {isLoading ? "Analyzing..." : "🧠 Resolve with AI"}
                   </button>
-                  <p className="text-xs text-blue-600 text-center">
+                  <p className="text-sm text-blue-600 text-center font-medium">
                     AI will analyze the question and determine the outcome
                   </p>
                 </div>
@@ -1177,22 +1247,34 @@ export function MarketCard({
           )}
       </div>
 
-      {/* Transaction Status */}
+      {/* Transaction Status - Simplified */}
       {isPending && (
-        <div className="mt-3 text-sm text-blue-600">Transaction pending...</div>
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-lg font-medium">
+            ⏳ Transaction pending...
+          </div>
+        </div>
       )}
       {isConfirming && (
-        <div className="mt-3 text-sm text-yellow-600">
-          Confirming transaction...
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center px-4 py-2 bg-yellow-100 text-yellow-700 rounded-full text-lg font-medium">
+            🔄 Confirming transaction...
+          </div>
         </div>
       )}
       {isConfirmed && (
-        <div className="mt-3 text-sm text-green-600">
-          Transaction confirmed!
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-700 rounded-full text-lg font-medium">
+            ✅ Transaction confirmed!
+          </div>
         </div>
       )}
       {error && (
-        <div className="mt-3 text-sm text-red-600">Error: {error.message}</div>
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center px-4 py-2 bg-red-100 text-red-700 rounded-full text-lg font-medium">
+            ❌ Error: {error.message}
+          </div>
+        </div>
       )}
     </div>
   );

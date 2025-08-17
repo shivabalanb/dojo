@@ -27,13 +27,13 @@ export default function Home() {
             </h2>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             {/* Market List */}
             <div className="lg:col-span-2">
               <MarketList />
             </div>
             {/* Sidebar */}
-            <div>
+            <div className="lg:col-span-2">
               {/* <WalletStatus /> */}
               <CreateMarket />
             </div>
