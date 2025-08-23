@@ -33,7 +33,6 @@ export function MarketCard({
   const [shareAmount, setShareAmount] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
-  const [dbQuestion, setDbQuestion] = useState<string | null>(null);
   const [ftsoPrice, setFtsoPrice] = useState<string | null>(null);
   const [isLoadingPrice, setIsLoadingPrice] = useState(false);
   const [selectedResolutionMethod, setSelectedResolutionMethod] = useState<
@@ -89,6 +88,19 @@ export function MarketCard({
     address,
     abi: dynamicABI,
     functionName: "noPool",
+  });
+
+  // Read title and question for LMSR markets
+  const { data: title } = useReadContract({
+    address,
+    abi: dynamicABI,
+    functionName: "title",
+  });
+
+  const { data: question } = useReadContract({
+    address,
+    abi: dynamicABI,
+    functionName: "question",
   });
 
   const { data: yesStake } = useReadContract({
@@ -240,22 +252,6 @@ export function MarketCard({
     noProb: noProb?.toString(),
   });
 
-  // Fetch question from database using marketIndex
-  useEffect(() => {
-    if (marketIndex !== undefined) {
-      fetch(`/api/markets?index=${marketIndex}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.question) {
-            setDbQuestion(data.question);
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to fetch market question:", err);
-        });
-    }
-  }, [marketIndex]);
-
   // Fetch FTSO price when market closes (no auto-resolution - let user choose)
   useEffect(() => {
     if (
@@ -271,9 +267,11 @@ export function MarketCard({
     }
   }, [endTime, hasFTSOResolution, ftsoAddress, ftsoFeedId, ftsoPrice, outcome]);
 
-  // Use database question if available, fallback to prop, then generic
-  const displayQuestion =
-    dbQuestion || propQuestion || `Market ${Number(marketIndex) + 1}`;
+  // Use contract title for LMSR markets, fallback to prop question or generic
+  const displayTitle =
+    isLMSRMarket && title
+      ? title
+      : propQuestion || `Market ${Number(marketIndex) + 1}`;
 
   // Helper functions for market states
   const isWaitingForOpponent = () => {
@@ -658,9 +656,11 @@ export function MarketCard({
       {/* Market Info */}
       <div className="mb-6">
         <div className="flex items-start justify-between mb-4">
-          <h3 className="text-2xl font-bold text-gray-900 flex-1 leading-tight">
-            {displayQuestion}
-          </h3>
+          <div className="flex-1">
+            <h3 className="text-2xl font-bold text-gray-900 leading-tight">
+              {displayTitle}
+            </h3>
+          </div>
           <div
             className={`ml-4 px-4 py-2 rounded-full text-sm font-bold ${
               isLMSRMarket

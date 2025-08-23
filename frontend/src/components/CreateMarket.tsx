@@ -7,9 +7,8 @@ import {
   useReadContract,
   useAccount,
 } from "wagmi";
-import { readContract } from "wagmi/actions";
-import { config } from "../lib/wagmi";
-import { parseEther, parseUnits, formatUnits } from "viem";
+import { writeContract } from "wagmi/actions";
+import { parseUnits, formatUnits } from "viem";
 import {
   MarketFactoryABI,
   MARKET_FACTORY_ADDRESS,
@@ -26,6 +25,7 @@ const Pill = ({ children }: { children: React.ReactNode }) => (
 );
 
 export function CreateMarket() {
+  const [title, setTitle] = useState("ETH Price Prediction");
   const [question, setQuestion] = useState("Will the price of ETH go up?");
   const [durationInput, setDurationInput] = useState({
     days: "0",
@@ -36,7 +36,7 @@ export function CreateMarket() {
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState("");
-  const [marketType, setMarketType] = useState<"TwoParty" | "LMSR">("TwoParty");
+  const [marketType, setMarketType] = useState<"TwoParty" | "LMSR">("LMSR");
   const [creatorBetAmount, setCreatorBetAmount] = useState("10");
   const [oddsRatio, setOddsRatio] = useState("1:2");
   const [creatorSide, setCreatorSide] = useState<"yes" | "no">("yes");
@@ -88,18 +88,7 @@ export function CreateMarket() {
   useEffect(() => {
     if (useFTSO) setFtsoEpochId(String(getFutureEpochId()));
   }, [useFTSO, durationInput]);
-  const [initialLiquidity, setInitialLiquidity] = useState("0.01");
-  const [liquidityLevel, setLiquidityLevel] = useState(2);
-  const getBetaParameter = () =>
-    (
-      ({
-        1: parseEther("0.01"),
-        2: parseEther("0.05"),
-        3: parseEther("0.1"),
-        4: parseEther("0.2"),
-        5: parseEther("0.5"),
-      }) as const
-    )[liquidityLevel as 1 | 2 | 3 | 4 | 5];
+  const [initialLiquidity, setInitialLiquidity] = useState("10");
 
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -115,51 +104,25 @@ export function CreateMarket() {
 
   useEffect(() => {
     if (isSuccess && pendingQuestion) {
-      (async () => {
-        try {
-          const marketCount = await readContract(config, {
-            address: MARKET_FACTORY_ADDRESS,
-            abi: MarketFactoryABI,
-            functionName: "getAllMarketsCount",
-          });
-          const marketIndex = Number(marketCount) - 1;
-          const r = await fetch("/api/markets", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              market_index: marketIndex,
-              question: pendingQuestion,
-            }),
-          });
-          setSuccessMessage(
-            r.ok
-              ? "Market created and stored successfully!"
-              : "Market created on-chain but failed to store metadata"
-          );
-        } catch {
-          setSuccessMessage(
-            "Market created on-chain but failed to store metadata"
-          );
-        } finally {
-          setTimeout(() => {
-            setQuestion("");
-            setDurationInput({
-              days: "0",
-              hours: "0",
-              minutes: "0",
-              seconds: "0",
-            });
-            setCreatorBetAmount("10");
-            setCreatorSide("yes");
-            setSuccessMessage("");
-          }, 1200);
-        }
-      })();
+      setSuccessMessage("Market created successfully!");
+      setTimeout(() => {
+        setTitle("ETH Price Prediction");
+        setQuestion("");
+        setDurationInput({
+          days: "0",
+          hours: "0",
+          minutes: "0",
+          seconds: "0",
+        });
+        setCreatorBetAmount("10");
+        setCreatorSide("yes");
+        setSuccessMessage("");
+      }, 1200);
       setPendingQuestion("");
     }
   }, [isSuccess, pendingQuestion]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total =
       parseInt(durationInput.days || "0") * 86400 +
@@ -220,26 +183,59 @@ export function CreateMarket() {
           });
         }
       } else {
+        // Validate initial liquidity
+        const liquidityAmount = Number(initialLiquidity);
+        if (liquidityAmount <= 0 || liquidityAmount > 1000) {
+          alert("Initial liquidity must be between 0.01 and 1000 USDC");
+          return;
+        }
+
+        // Parse values with proper validation
         const liquidityUSDC = parseUnits(initialLiquidity, 6);
-        const beta = getBetaParameter();
+
+        console.log("LMSR Market Creation Parameters:");
+        console.log("- Initial Liquidity (UI):", initialLiquidity, "USDC");
+        console.log(
+          "- Initial Liquidity (parsed):",
+          liquidityUSDC.toString(),
+          "wei"
+        );
+        console.log("- Duration:", total, "seconds");
+        console.log("- Question:", question);
+
+        // Check if user has enough USDC balance
+        if (usdcBalance && liquidityUSDC > (usdcBalance as bigint)) {
+          alert(
+            `Insufficient USDC balance. You have ${formatUnits(
+              usdcBalance as bigint,
+              6
+            )} USDC but need ${initialLiquidity} USDC`
+          );
+          return;
+        }
+
         writeContract({
           address: MOCK_USDC_ADDRESS,
           abi: MockUSDCABI,
           functionName: "approve",
           args: [MARKET_FACTORY_ADDRESS, liquidityUSDC],
         });
-        writeContract({
-          address: MARKET_FACTORY_ADDRESS,
-          abi: MarketFactoryABI,
-          functionName: "createLMSRMarket",
-          args: [
-            MOCK_USDC_ADDRESS,
-            question,
-            BigInt(total),
-            beta,
-            liquidityUSDC,
-          ],
-        });
+
+        // Add a delay to ensure approve goes through first
+        setTimeout(() => {
+          writeContract({
+            address: MARKET_FACTORY_ADDRESS,
+            abi: MarketFactoryABI,
+            functionName: "createLMSRMarket",
+            args: [
+              MOCK_USDC_ADDRESS,
+              title,
+              question,
+              BigInt(total),
+              liquidityUSDC,
+            ],
+          });
+        }, 5000); // 5 second delay
       }
       setPendingQuestion(qVal);
     } catch {}
@@ -310,6 +306,20 @@ export function CreateMarket() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="text-sm font-semibold text-slate-800">
+                Market Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., ETH Price Prediction"
+                className={`${inputCls}`}
+                required
+              />
+            </div>
+
             <div>
               <label className="text-sm font-semibold text-slate-800">
                 Market Question
@@ -516,7 +526,7 @@ export function CreateMarket() {
                     </Switch>
                   </div>
 
-                  {useFTSO && (
+                  {/* {useFTSO && (
                     <div className="rounded-xl border-2 border-green-300 bg-green-50 p-4 space-y-3">
                       <div>
                         <label className="text-sm font-semibold text-slate-800">
@@ -622,7 +632,7 @@ export function CreateMarket() {
                         </div>
                       </div>
                     </div>
-                  )}
+                  )} */}
                 </div>
               </Card>
             ) : (
@@ -646,49 +656,11 @@ export function CreateMarket() {
                         required
                       />
                     </div>
-                    <div>
-                      <label className="text-sm font-semibold text-slate-800">
-                        Liquidity Level
-                      </label>
-                      <div className="mt-2 flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setLiquidityLevel(Math.max(1, liquidityLevel - 1))
-                          }
-                          className="rounded-xl border-2 px-2 py-1 text-slate-800"
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </button>
-                        <input
-                          type="range"
-                          min="1"
-                          max="5"
-                          value={liquidityLevel}
-                          onChange={(e) =>
-                            setLiquidityLevel(Number(e.target.value))
-                          }
-                          className="w-full accent-green-600"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setLiquidityLevel(Math.min(5, liquidityLevel + 1))
-                          }
-                          className="rounded-xl border-2 px-2 py-1 text-slate-800"
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <p className="text-xs text-slate-600 mt-1">
-                        Level {liquidityLevel} (higher = stabler prices)
-                      </p>
-                    </div>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3 text-sm border-2 border-slate-200">
                     <span className="font-bold text-slate-800">Preview:</span>{" "}
-                    {initialLiquidity} USDC seeds the pool. LMSR with β set from
-                    your level.
+                    {initialLiquidity} USDC seeds the pool. β automatically
+                    calculated for optimal liquidity.
                   </div>
                 </div>
               </Card>
