@@ -17,30 +17,76 @@ import {
 } from "../lib/abis";
 import { Switch, RadioGroup, Combobox, Transition } from "@headlessui/react";
 import { Check, ChevronDown, ChevronUp, Search } from "lucide-react";
+import {
+  Input,
+  Textarea,
+  DurationPicker,
+  PreviewCard,
+  MarketTypeToggle,
+} from "./ui";
 
+// Reusable components - defined outside to avoid recreation on every render
 const Pill = ({ children }: { children: React.ReactNode }) => (
   <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 px-3 py-1 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-300/40">
     {children}
   </span>
 );
 
+const Card = ({ children }: { children: React.ReactNode }) => (
+  <div className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_-15px_rgba(0,0,0,0.2)]">
+    {children}
+  </div>
+);
+
+// CSS constants - defined outside to avoid recreation on every render
+const inputCls =
+  "w-full px-3 py-2 border-2 border-slate-300 rounded-xl bg-white text-slate-900 placeholder-slate-400 text-sm font-medium";
+
+const chipBase =
+  "w-full h-11 rounded-xl border font-extrabold flex items-center justify-center transition";
+const chipOn = "border-white/40 bg-white/30 text-slate-900 shadow";
+const chipOff = "border-white/20 bg-white/10 text-slate-800 hover:bg-white/20";
+
+const inputGlass =
+  "h-11 w-full rounded-xl border border-white/30 bg-white/70 backdrop-blur-sm px-3 text-slate-900 placeholder-slate-500 shadow-inner";
+
+// Constants - defined outside to avoid recreation on every render
+const ftsoAddress = "0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d";
+
+// Helper functions - defined outside to avoid recreation on every render
+const formatUSDC = (amount: number | string) => {
+  const num = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (isNaN(num)) return "0 USDC";
+
+  // If it's a whole number, don't show decimals
+  if (Number.isInteger(num)) {
+    return `${num} USDC`;
+  }
+
+  // Otherwise show up to 2 decimal places, removing trailing zeros
+  return `${num.toFixed(2).replace(/\.?0+$/, "")} USDC`;
+};
+
+const calculateFTSOEpoch = (t: number) => Math.floor(t / 90);
+
 export function CreateMarket() {
   const [title, setTitle] = useState("ETH Price Prediction");
   const [question, setQuestion] = useState("Will the price of ETH go up?");
   const [durationInput, setDurationInput] = useState({
     days: "0",
-    hours: "0",
-    minutes: "2",
+    hours: "1",
+    minutes: "0",
     seconds: "0",
   });
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState("");
-  const [marketType, setMarketType] = useState<"TwoParty" | "LMSR">("LMSR");
+  const [marketType, setMarketType] = useState<"TwoParty" | "ConstantProduct">(
+    "ConstantProduct"
+  );
   const [creatorBetAmount, setCreatorBetAmount] = useState("10");
   const [oddsRatio, setOddsRatio] = useState("1:2");
   const [creatorSide, setCreatorSide] = useState<"yes" | "no">("yes");
-  const ftsoAddress = "0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d";
   const [ftsoEpochId, setFtsoEpochId] = useState("");
   const [priceThreshold, setPriceThreshold] = useState("");
   const [useFTSO, setUseFTSO] = useState(false);
@@ -53,19 +99,6 @@ export function CreateMarket() {
       : ftsoFeeds.filter((f) =>
           f.name.toLowerCase().includes(feedSearchTerm.toLowerCase())
         );
-  // Helper function to format USDC amounts
-  const formatUSDC = (amount: number | string) => {
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    if (isNaN(num)) return "0 USDC";
-
-    // If it's a whole number, don't show decimals
-    if (Number.isInteger(num)) {
-      return `${num} USDC`;
-    }
-
-    // Otherwise show up to 2 decimal places, removing trailing zeros
-    return `${num.toFixed(2).replace(/\.?0+$/, "")} USDC`;
-  };
 
   // Calculate opponent bet amount based on odds ratio
   const calculateOpponentBetAmount = () => {
@@ -75,7 +108,6 @@ export function CreateMarket() {
     return (Number(creatorBetAmount) * o) / c;
   };
   const opponentBetAmount = calculateOpponentBetAmount();
-  const calculateFTSOEpoch = (t: number) => Math.floor(t / 90);
   const getFutureEpochId = () => {
     const now = Math.floor(Date.now() / 1000);
     const total =
@@ -136,7 +168,7 @@ export function CreateMarket() {
     )
       return;
     if (
-      marketType === "LMSR" &&
+      marketType === "ConstantProduct" &&
       (!initialLiquidity || Number(initialLiquidity) <= 0)
     )
       return;
@@ -193,7 +225,7 @@ export function CreateMarket() {
         // Parse values with proper validation
         const liquidityUSDC = parseUnits(initialLiquidity, 6);
 
-        console.log("LMSR Market Creation Parameters:");
+        console.log("Constant Product Market Creation Parameters:");
         console.log("- Initial Liquidity (UI):", initialLiquidity, "USDC");
         console.log(
           "- Initial Liquidity (parsed):",
@@ -226,7 +258,7 @@ export function CreateMarket() {
           writeContract({
             address: MARKET_FACTORY_ADDRESS,
             abi: MarketFactoryABI,
-            functionName: "createLMSRMarket",
+            functionName: "createConstantProductMarket",
             args: [
               MOCK_USDC_ADDRESS,
               title,
@@ -242,24 +274,6 @@ export function CreateMarket() {
     setIsLoading(false);
   };
 
-  const Card = ({ children }: { children: React.ReactNode }) => (
-    <div className="rounded-3xl border border-slate-200 bg-white shadow-[0_10px_40px_-15px_rgba(0,0,0,0.2)]">
-      {children}
-    </div>
-  );
-
-  const inputCls =
-    "w-full px-3 py-2 border-2 border-slate-300 rounded-xl bg-white text-slate-900 placeholder-slate-400 text-sm font-medium";
-
-  const chipBase =
-    "w-full h-11 rounded-xl border font-extrabold flex items-center justify-center transition";
-  const chipOn = "border-white/40 bg-white/30 text-slate-900 shadow";
-  const chipOff =
-    "border-white/20 bg-white/10 text-slate-800 hover:bg-white/20";
-
-  const inputGlass =
-    "h-11 w-full rounded-xl border border-white/30 bg-white/70 backdrop-blur-sm px-3 text-slate-900 placeholder-slate-500 shadow-inner";
-
   return (
     <div className="max-w-5xl mx-auto p-2">
       <Card>
@@ -272,97 +286,36 @@ export function CreateMarket() {
               <Pill>
                 Balance:{" "}
                 <span className="font-black">
-                  {usdcBalance ? formatUnits(usdcBalance as bigint, 6) : "0"}{" "}
+                  {usdcBalance
+                    ? Number(formatUnits(usdcBalance as bigint, 6)).toFixed(2)
+                    : "0.00"}{" "}
                   USDC
                 </span>
               </Pill>
             )}
           </div>
 
-          <div className="mb-6">
-            <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100 border border-slate-200">
-              {(["TwoParty", "LMSR"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setMarketType(t)}
-                  className={`h-11 rounded-xl text-sm font-bold transition-colors ${
-                    marketType === t
-                      ? "bg-white text-slate-900 border-2 border-slate-300 shadow-sm"
-                      : "bg-transparent text-slate-700 hover:bg-white/50 border-2 border-transparent"
-                  }`}
-                >
-                  {t === "TwoParty"
-                    ? "Two-Party Challenge"
-                    : "Automated Market"}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-[13px] text-slate-600">
-              {marketType === "TwoParty"
-                ? "Post a head-to-head challenge. A friend accepts to start."
-                : "Trade instantly with LMSR liquidity."}
-            </p>
-          </div>
+          {/* <MarketTypeToggle value={marketType} onChange={setMarketType} /> */}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="text-sm font-semibold text-slate-800">
-                Market Title
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., ETH Price Prediction"
-                className={`${inputCls}`}
-                required
-              />
-            </div>
+            <Input
+              label="Market Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., ETH Price Prediction"
+              required
+            />
 
-            <div>
-              <label className="text-sm font-semibold text-slate-800">
-                Market Question
-              </label>
-              <textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                rows={3}
-                placeholder="e.g., Will ETH be ≥ $4,000 by midnight UTC?"
-                className={`${inputCls}`}
-                required
-              />
-            </div>
+            <Textarea
+              label="Market Question"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              rows={3}
+              placeholder="e.g., Will ETH be ≥ $4,000 by midnight UTC?"
+              required
+            />
 
-            <div>
-              <label className="text-sm font-semibold text-slate-800">
-                Duration
-              </label>
-              <div className="mt-2 grid grid-cols-4 gap-2">
-                {(["days", "hours", "minutes", "seconds"] as const).map((k) => (
-                  <div key={k} className="flex flex-col">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                      {k}
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={durationInput[k]}
-                      onChange={(e) =>
-                        setDurationInput({
-                          ...durationInput,
-                          [k]: e.target.value,
-                        })
-                      }
-                      className={`${inputCls} text-center`}
-                    />
-                  </div>
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-slate-600">
-                How long betting stays open.
-              </p>
-            </div>
+            <DurationPicker value={durationInput} onChange={setDurationInput} />
 
             {marketType === "TwoParty" ? (
               <Card>
@@ -498,8 +451,8 @@ export function CreateMarket() {
                             </span>
                           </div>
                           <p className="text-xs text-slate-600 mt-2">
-                            If you win, you get your stake back + opponent's
-                            stake
+                            If you win, you get your stake back +
+                            opponent&apos;s stake
                           </p>
                         </div>
                       </div>
@@ -634,36 +587,32 @@ export function CreateMarket() {
                     </div>
                   )} */}
                 </div>
+
+                <PreviewCard
+                  title={title}
+                  duration={`${durationInput.days}d ${durationInput.hours}h ${durationInput.minutes}m`}
+                  liquidity={`${creatorBetAmount} + ${calculateOpponentBetAmount()}`}
+                />
               </Card>
             ) : (
-              <Card>
-                <div className="p-4 space-y-4">
-                  <h3 className="font-semibold text-slate-900">
-                    Automated Market Setup
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm font-semibold text-slate-800">
-                        Initial Liquidity (USDC)
-                      </label>
-                      <input
-                        type="number"
-                        value={initialLiquidity}
-                        onChange={(e) => setInitialLiquidity(e.target.value)}
-                        min="0"
-                        step="0.01"
-                        className={inputCls}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3 text-sm border-2 border-slate-200">
-                    <span className="font-bold text-slate-800">Preview:</span>{" "}
-                    {initialLiquidity} USDC seeds the pool. β automatically
-                    calculated for optimal liquidity.
-                  </div>
-                </div>
-              </Card>
+              <div className="space-y-4">
+                <Input
+                  label="Initial Liquidity (USDC)"
+                  value={initialLiquidity}
+                  onChange={(e) => setInitialLiquidity(e.target.value)}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  helper="Provides seed funding for the market. Higher liquidity = smoother trading with less slippage. This amount gets distributed to winners at resolution."
+                />
+
+                <PreviewCard
+                  title={title}
+                  duration={`${durationInput.days}d ${durationInput.hours}h ${durationInput.minutes}m`}
+                  liquidity={initialLiquidity}
+                />
+              </div>
             )}
 
             <button
@@ -673,7 +622,7 @@ export function CreateMarket() {
             >
               {isPending || isLoading
                 ? "Creating…"
-                : `Create ${marketType === "TwoParty" ? "Challenge" : "Automated"} Market`}
+                : `Create ${marketType === "TwoParty" ? "Challenge" : "AMM"} Market`}
             </button>
           </form>
 

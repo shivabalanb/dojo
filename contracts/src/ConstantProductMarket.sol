@@ -3,20 +3,23 @@ pragma solidity ^0.8.19;
 
 import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin/token/ERC20/utils/SafeERC20.sol";
-import {WadMath} from "./WadMath.sol";
 
-contract LMSRMarket {
+contract ConstantProductMarket {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable usdc; // 6 decimals
     string public title;
     string public question;
     uint256 public endTime;
-    uint256 public b; // liquidity param in USDC units (6d)
+    uint256 public k; // liquidity parameter in USDC units (6d)
 
-    uint256 public qYes; // total YES shares (WAD 1e18)
-    uint256 public qNo; // total NO  shares (WAD 1e18)
-    mapping(address => uint256) public yesShares; // user shares (WAD)
+    // Scaling factor to make shares proportional to liquidity
+    // This allows for reasonable price movements with low liquidity
+    uint256 public immutable shareScale;
+    uint256 public qYes; // total YES shares (scaled units)
+    uint256 public qNo; // total NO shares (scaled units)
+    
+    mapping(address => uint256) public yesShares; 
     mapping(address => uint256) public noShares;
 
     enum Outcome {
@@ -25,8 +28,6 @@ contract LMSRMarket {
         No
     }
     Outcome public outcome = Outcome.Unresolved;
-
-    int256 constant LN2_WAD = 693_147_180_559_945_309; // ln(2) * 1e18
 
     event Buy(address indexed user, bool yes, uint256 dQ, uint256 costUSDC);
     event Sell(address indexed user, bool yes, uint256 dQ, uint256 refundUSDC);
@@ -41,11 +42,11 @@ contract LMSRMarket {
         _;
     }
 
-    /// @param _initialLiquidity USDC units (6d). b is auto-calculated as initialLiquidity / ln(2).
+    /// @param _initialLiquidity USDC units (6d). This becomes the liquidity parameter k.
     constructor(
         address _usdc,
         string memory _title,
-        string memory _q,
+        string memory _question,
         uint256 _end,
         uint256 _initialLiquidity
     ) {
@@ -55,45 +56,51 @@ contract LMSRMarket {
 
         usdc = IERC20(_usdc);
         title = _title;
-        question = _q;
+        question = _question;
         endTime = _end;
 
-        // Auto-calculate b from initial liquidity: b = initialLiquidity / ln(2)
-        // This ensures max loss = b * ln(2) = initialLiquidity
-        b = (_initialLiquidity * 1e18) / uint256(LN2_WAD);
+        // Use initialLiquidity directly as the liquidity parameter k
+        // This makes the market behave like a constant product AMM
+        k = _initialLiquidity;
+
+        // Calculate share scale to make shares much smaller
+        // Use a much smaller scale to allow reasonable price movements
+        shareScale = 1e6; // 1e6 units = 1 USDC worth of shares
 
         // USDC will be transferred by the MarketFactory
         // start neutral: qYes = qNo = 0 → 50/50
     }
 
-    // ---- stable LMSR cost: C(q) = b * ln(exp(qY/b)+exp(qN/b)) ----
+    // ---- Constant Product AMM (like Polymarket) ----
     function _cost(uint256 qY, uint256 qN) internal view returns (uint256) {
         if (qY == 0 && qN == 0) return 0;
-        // q/b in WAD: ( (q/1e18) / (b/1e6) ) * 1e18 = q*1e6 / b
-        int256 ay = int256((qY * 1e6) / b);
-        int256 an = int256((qN * 1e6) / b);
-        int256 m = ay > an ? ay : an;
-        int256 eY = WadMath.expWad(ay - m);
-        int256 eN = WadMath.expWad(an - m);
-        int256 ln = WadMath.lnWad(eY + eN) + m;
-        // b (1e6) * ln (1e18) / 1e18 -> 1e6 (USDC)
-        return (b * uint256(ln)) / 1e18;
+
+        // Use constant product formula: (qY + k) * (qN + k) = k^2
+        // Where k is the initial liquidity parameter
+        // This provides smooth price movements like Polymarket
+        uint256 k_param = k; // k is in USDC units (6 decimals)
+
+        // Cost = sqrt((qY + k) * (qN + k)) - k
+        uint256 term1 = qY + k_param;
+        uint256 term2 = qN + k_param;
+        uint256 product = term1 * term2;
+        uint256 sqrt = _sqrt(product);
+        return sqrt > k_param ? sqrt - k_param : 0;
     }
 
     // ---- prices (probabilities, WAD) ----
     function priceYes() public view returns (uint256) {
-        int256 ay = int256((qYes * 1e6) / b);
-        int256 an = int256((qNo * 1e6) / b);
-        int256 m = ay > an ? ay : an;
-        int256 eY = WadMath.expWad(ay - m);
-        int256 eN = WadMath.expWad(an - m);
-        return uint256((eY * 1e18) / (eY + eN));
+        if (qYes == 0 && qNo == 0) return 0.5e18; // 50% when no shares
+
+        // Constant product pricing: YES probability = (qY + k) / (qY + qN + 2k)
+        uint256 k_param = k; // k is in USDC units (6 decimals)
+        return ((qYes + k_param) * 1e18) / (qYes + qNo + 2 * k_param);
     }
     function priceNo() public view returns (uint256) {
         return 1e18 - priceYes();
     }
 
-    // ---- quotes (inputs: dQ WAD shares; outputs: USDC 6d) ----
+    // ---- quotes (inputs: dQ scaled units; outputs: USDC 6d) ----
     function quoteBuyYes(uint256 dQ) external view returns (uint256) {
         require(dQ > 0, "dQ");
         return _cost(qYes + dQ, qNo) - _cost(qYes, qNo);
@@ -157,19 +164,37 @@ contract LMSRMarket {
     }
     function claim() external {
         require(outcome != Outcome.Unresolved, "unresolved");
-        uint256 ONE_USDC = 1e6;
+
         if (outcome == Outcome.Yes) {
             uint256 u = yesShares[msg.sender];
             require(u > 0, "no win");
             yesShares[msg.sender] = 0;
-            uint256 payout = (u * ONE_USDC) / 1e18; // 1 USDC per share
+
+            // Total payout from all remaining liquidity (proportional to shares)
+            uint256 remainingLiquidity = usdc.balanceOf(address(this));
+            uint256 totalYesShares = qYes;
+            uint256 payout = 0;
+
+            if (remainingLiquidity > 0 && totalYesShares > 0) {
+                payout = (u * remainingLiquidity) / totalYesShares;
+            }
+
             usdc.safeTransfer(msg.sender, payout);
             emit Claimed(msg.sender, payout);
         } else {
             uint256 u = noShares[msg.sender];
             require(u > 0, "no win");
             noShares[msg.sender] = 0;
-            uint256 payout = (u * ONE_USDC) / 1e18;
+
+            // Total payout from all remaining liquidity (proportional to shares)
+            uint256 remainingLiquidity = usdc.balanceOf(address(this));
+            uint256 totalNoShares = qNo;
+            uint256 payout = 0;
+
+            if (remainingLiquidity > 0 && totalNoShares > 0) {
+                payout = (u * remainingLiquidity) / totalNoShares;
+            }
+
             usdc.safeTransfer(msg.sender, payout);
             emit Claimed(msg.sender, payout);
         }
@@ -179,5 +204,18 @@ contract LMSRMarket {
         if (outcome != Outcome.Unresolved) return 2;
         if (block.timestamp < endTime) return 1;
         return 1;
+    }
+
+    // ---- Helper function for square root ----
+    function _sqrt(uint256 x) internal pure returns (uint256) {
+        if (x == 0) return 0;
+
+        uint256 z = (x + 1) / 2;
+        uint256 y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        }
+        return y;
     }
 }
