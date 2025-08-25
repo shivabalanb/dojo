@@ -34,14 +34,6 @@ else
     echo "❌ MarketFactory.json not found in contracts/out/"
 fi
 
-# TwoPartyMarket
-if [ -f "contracts/out/TwoPartyMarket.sol/TwoPartyMarket.json" ]; then
-    cp contracts/out/TwoPartyMarket.sol/TwoPartyMarket.json frontend/src/lib/artifacts/
-    echo "✅ TwoPartyMarket.json synced"
-else
-    echo "❌ TwoPartyMarket.json not found in contracts/out/"
-fi
-
 # MockUSDC
 if [ -f "contracts/out/MockUSDC.sol/MockUSDC.json" ]; then
     cp contracts/out/MockUSDC.sol/MockUSDC.json frontend/src/lib/artifacts/

@@ -1,17 +1,12 @@
 // Import ABIs from local artifacts
 import MarketFactoryArtifact from "../artifacts/MarketFactory.json";
-import TwoPartyMarketArtifact from "../artifacts/TwoPartyMarket.json";
 import ConstantProductMarketArtifact from "../artifacts/ConstantProductMarket.json";
 import MockUSDCArtifact from "../artifacts/MockUSDC.json";
 
 // Extract ABIs from the build artifacts
 export const MarketFactoryABI = MarketFactoryArtifact.abi;
-export const TwoPartyMarketABI = TwoPartyMarketArtifact.abi;
 export const ConstantProductMarketABI = ConstantProductMarketArtifact.abi;
 export const MockUSDCABI = MockUSDCArtifact.abi;
-
-// Legacy alias for backward compatibility
-export const MarketABI = TwoPartyMarketABI;
 
 // FLARE COSTON2 TESTNET
 // export const MOCK_USDC_ADDRESS = "0xb910A29A10402D76aCD49bd10c28533Ef35C61c3";
@@ -24,9 +19,9 @@ export const MarketABI = TwoPartyMarketABI;
 //   "0xC87a13685Cc147cB3dbe901A5baD7af6186BB0Ac";
 
 // SEPOLIA TESTNET
-export const MOCK_USDC_ADDRESS = "0x6066777554230d18270f05cF4024779C4269618a";
+export const MOCK_USDC_ADDRESS = "0x443002A432DCc022206500cde2a9c5247BA12EAf";
 export const MARKET_FACTORY_ADDRESS =
-  "0x1D7bA3B297A596ac8B211D9B5A194EBC59735779";
+  "0x5064978caBAEDaBa10e3DAf00846937b97E0B220";
 
 // Market type enum (matches contract)
 export enum MarketType {
@@ -36,7 +31,5 @@ export enum MarketType {
 
 // Export types for TypeScript
 export type MarketFactoryABI = typeof MarketFactoryABI;
-export type TwoPartyMarketABI = typeof TwoPartyMarketABI;
 export type ConstantProductMarketABI = typeof ConstantProductMarketABI;
 export type MockUSDCABI = typeof MockUSDCABI;
-export type MarketABI = typeof MarketABI;

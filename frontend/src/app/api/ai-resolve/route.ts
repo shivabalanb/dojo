@@ -26,20 +26,22 @@ export async function POST(req: NextRequest) {
     });
 
     // Basic validation
-    if (!question || !marketAddress) {
+    if (!question) {
       return NextResponse.json(
-        { error: "Missing required fields: question, marketAddress" },
+        { error: "Missing required field: question" },
         { status: 400 }
       );
     }
 
-    // Check if market has ended
-    const currentTime = Math.floor(Date.now() / 1000);
-    if (currentTime < endTime) {
-      return NextResponse.json(
-        { error: "Market has not ended yet" },
-        { status: 400 }
-      );
+    // Check if market has ended (only if endTime is provided)
+    if (endTime) {
+      const currentTime = Math.floor(Date.now() / 1000);
+      if (currentTime < endTime) {
+        return NextResponse.json(
+          { error: "Market has not ended yet" },
+          { status: 400 }
+        );
+      }
     }
 
     // For now, let's implement a simple rule-based system
@@ -64,7 +66,7 @@ async function resolveWithAI(
 ): Promise<AIResolutionResponse> {
   console.log("🧠 Analyzing question with Google Gemini:", question);
 
-  const apiKey = "AIzaSyAR8MpaaHWl46bW9YO85lYCr_0SR_jCW5A";
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   if (!apiKey) {
     console.error("❌ GOOGLE_GEMINI_API_KEY not found");
     throw new Error("Google Gemini API key not configured");

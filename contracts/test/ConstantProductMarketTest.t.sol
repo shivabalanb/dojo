@@ -35,7 +35,7 @@ contract ConstantProductMarketTest is Test {
         usdc.approve(address(factory), INITIAL_LIQUIDITY);
 
         vm.prank(creator);
-        address marketAddress = factory.createConstantProductMarket(
+        address marketAddress = factory.createMarket(
             address(usdc),
             "Test Market",
             "Will the test pass?",
@@ -83,7 +83,7 @@ contract ConstantProductMarketTest is Test {
         usdc.approve(address(factory), lowLiquidity);
 
         vm.prank(creator);
-        address lowLiquidityMarketAddress = factory.createConstantProductMarket(
+        address lowLiquidityMarketAddress = factory.createMarket(
             address(usdc),
             "Low Liquidity Test",
             "Will this work?",
@@ -190,7 +190,7 @@ contract ConstantProductMarketTest is Test {
         usdc.approve(address(factory), initialLiquidity);
 
         vm.prank(creator);
-        address marketAddress = factory.createConstantProductMarket(
+        address marketAddress = factory.createMarket(
             address(usdc),
             "Liquidity Test",
             "Will liquidity be distributed correctly?",

@@ -15,15 +15,9 @@ import {
   MOCK_USDC_ADDRESS,
   MockUSDCABI,
 } from "../lib/abis";
-import { Switch, RadioGroup, Combobox, Transition } from "@headlessui/react";
-import { Check, ChevronDown, ChevronUp, Search } from "lucide-react";
-import {
-  Input,
-  Textarea,
-  DurationPicker,
-  PreviewCard,
-  MarketTypeToggle,
-} from "./ui";
+import { MAX_UINT256 } from "../lib/utils";
+
+import { Input, Textarea, DurationPicker, PreviewCard } from "./ui";
 
 // Reusable components - defined outside to avoid recreation on every render
 const Pill = ({ children }: { children: React.ReactNode }) => (
@@ -50,9 +44,6 @@ const chipOff = "border-white/20 bg-white/10 text-slate-800 hover:bg-white/20";
 const inputGlass =
   "h-11 w-full rounded-xl border border-white/30 bg-white/70 backdrop-blur-sm px-3 text-slate-900 placeholder-slate-500 shadow-inner";
 
-// Constants - defined outside to avoid recreation on every render
-const ftsoAddress = "0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d";
-
 // Helper functions - defined outside to avoid recreation on every render
 const formatUSDC = (amount: number | string) => {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -67,8 +58,6 @@ const formatUSDC = (amount: number | string) => {
   return `${num.toFixed(2).replace(/\.?0+$/, "")} USDC`;
 };
 
-const calculateFTSOEpoch = (t: number) => Math.floor(t / 90);
-
 export function CreateMarket() {
   const [title, setTitle] = useState("ETH Price Prediction");
   const [question, setQuestion] = useState("Will the price of ETH go up?");
@@ -81,46 +70,8 @@ export function CreateMarket() {
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState("");
-  const [marketType, setMarketType] = useState<"TwoParty" | "ConstantProduct">(
-    "ConstantProduct"
-  );
-  const [creatorBetAmount, setCreatorBetAmount] = useState("10");
-  const [oddsRatio, setOddsRatio] = useState("1:2");
-  const [creatorSide, setCreatorSide] = useState<"yes" | "no">("yes");
-  const [ftsoEpochId, setFtsoEpochId] = useState("");
-  const [priceThreshold, setPriceThreshold] = useState("");
-  const [useFTSO, setUseFTSO] = useState(false);
-  const [feedSearchTerm, setFeedSearchTerm] = useState("");
-
-  const [selectedFeed, setSelectedFeed] = useState(ftsoFeeds[3]);
-  const filteredFeeds =
-    feedSearchTerm === ""
-      ? ftsoFeeds
-      : ftsoFeeds.filter((f) =>
-          f.name.toLowerCase().includes(feedSearchTerm.toLowerCase())
-        );
-
-  // Calculate opponent bet amount based on odds ratio
-  const calculateOpponentBetAmount = () => {
-    if (!oddsRatio || !creatorBetAmount) return 0;
-    const [c, o] = oddsRatio.split(":").map(Number);
-    if (!c) return 0;
-    return (Number(creatorBetAmount) * o) / c;
-  };
-  const opponentBetAmount = calculateOpponentBetAmount();
-  const getFutureEpochId = () => {
-    const now = Math.floor(Date.now() / 1000);
-    const total =
-      parseInt(durationInput.days || "0") * 86400 +
-      parseInt(durationInput.hours || "0") * 3600 +
-      parseInt(durationInput.minutes || "0") * 60 +
-      parseInt(durationInput.seconds || "0");
-    return calculateFTSOEpoch(now + total);
-  };
-  useEffect(() => {
-    if (useFTSO) setFtsoEpochId(String(getFutureEpochId()));
-  }, [useFTSO, durationInput]);
   const [initialLiquidity, setInitialLiquidity] = useState("10");
+  const [hasInfiniteApproval, setHasInfiniteApproval] = useState(false);
 
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -132,6 +83,13 @@ export function CreateMarket() {
     abi: MockUSDCABI,
     functionName: "balanceOf",
     args: userAddress ? [userAddress] : undefined,
+  });
+
+  const { data: factoryAllowance } = useReadContract({
+    address: MOCK_USDC_ADDRESS,
+    abi: MockUSDCABI,
+    functionName: "allowance",
+    args: userAddress ? [userAddress, MARKET_FACTORY_ADDRESS] : undefined,
   });
 
   useEffect(() => {
@@ -146,13 +104,18 @@ export function CreateMarket() {
           minutes: "0",
           seconds: "0",
         });
-        setCreatorBetAmount("10");
-        setCreatorSide("yes");
+        setInitialLiquidity("10");
         setSuccessMessage("");
       }, 1200);
       setPendingQuestion("");
     }
   }, [isSuccess, pendingQuestion]);
+
+  useEffect(() => {
+    if (factoryAllowance !== undefined && factoryAllowance !== null) {
+      setHasInfiniteApproval((factoryAllowance as bigint) >= MAX_UINT256);
+    }
+  }, [factoryAllowance]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,115 +125,84 @@ export function CreateMarket() {
       parseInt(durationInput.minutes || "0") * 60 +
       parseInt(durationInput.seconds || "0");
     if (!question || total <= 0) return;
-    if (
-      marketType === "TwoParty" &&
-      (!creatorBetAmount || Number(creatorBetAmount) <= 0)
-    )
-      return;
-    if (
-      marketType === "ConstantProduct" &&
-      (!initialLiquidity || Number(initialLiquidity) <= 0)
-    )
-      return;
+    if (!initialLiquidity || Number(initialLiquidity) <= 0) return;
 
     setIsLoading(true);
     const qVal = question;
     try {
-      if (marketType === "TwoParty") {
-        const creatorAmt = parseUnits(creatorBetAmount, 6);
-        const opponentAmt = parseUnits(opponentBetAmount.toString(), 6);
-        const creatorChoseYes = creatorSide === "yes";
-        if (useFTSO && ftsoAddress && priceThreshold) {
-          const priceScaled = parseUnits(priceThreshold, 5);
-          writeContract({
-            address: MARKET_FACTORY_ADDRESS,
-            abi: MarketFactoryABI,
-            functionName: "createTwoPartyMarketWithFTSO",
-            args: [
-              question,
-              BigInt(total),
-              creatorAmt,
-              opponentAmt,
-              creatorChoseYes ? 1 : 2,
-              MOCK_USDC_ADDRESS,
-              ftsoAddress,
-              BigInt(getFutureEpochId()),
-              priceScaled,
-              selectedFeed.feedId,
-            ],
-          });
-        } else {
-          writeContract({
-            address: MARKET_FACTORY_ADDRESS,
-            abi: MarketFactoryABI,
-            functionName: "createTwoPartyMarket",
-            args: [
-              question,
-              BigInt(total),
-              creatorAmt,
-              opponentAmt,
-              creatorChoseYes ? 1 : 2,
-              MOCK_USDC_ADDRESS,
-            ],
-          });
-        }
-      } else {
-        // Validate initial liquidity
-        const liquidityAmount = Number(initialLiquidity);
-        if (liquidityAmount <= 0 || liquidityAmount > 1000) {
-          alert("Initial liquidity must be between 0.01 and 1000 USDC");
-          return;
-        }
-
-        // Parse values with proper validation
-        const liquidityUSDC = parseUnits(initialLiquidity, 6);
-
-        console.log("Constant Product Market Creation Parameters:");
-        console.log("- Initial Liquidity (UI):", initialLiquidity, "USDC");
-        console.log(
-          "- Initial Liquidity (parsed):",
-          liquidityUSDC.toString(),
-          "wei"
-        );
-        console.log("- Duration:", total, "seconds");
-        console.log("- Question:", question);
-
-        // Check if user has enough USDC balance
-        if (usdcBalance && liquidityUSDC > (usdcBalance as bigint)) {
-          alert(
-            `Insufficient USDC balance. You have ${formatUnits(
-              usdcBalance as bigint,
-              6
-            )} USDC but need ${initialLiquidity} USDC`
-          );
-          return;
-        }
-
-        writeContract({
-          address: MOCK_USDC_ADDRESS,
-          abi: MockUSDCABI,
-          functionName: "approve",
-          args: [MARKET_FACTORY_ADDRESS, liquidityUSDC],
-        });
-
-        // Add a delay to ensure approve goes through first
-        setTimeout(() => {
-          writeContract({
-            address: MARKET_FACTORY_ADDRESS,
-            abi: MarketFactoryABI,
-            functionName: "createConstantProductMarket",
-            args: [
-              MOCK_USDC_ADDRESS,
-              title,
-              question,
-              BigInt(total),
-              liquidityUSDC,
-            ],
-          });
-        }, 5000); // 5 second delay
+      // Validate initial liquidity
+      const liquidityAmount = Number(initialLiquidity);
+      if (liquidityAmount <= 0 || liquidityAmount > 1000) {
+        alert("Initial liquidity must be between 0.01 and 1000 USDC");
+        return;
       }
+
+      // Parse values with proper validation
+      const liquidityUSDC = parseUnits(initialLiquidity, 6);
+
+      console.log("Constant Product Market Creation Parameters:");
+      console.log("- Initial Liquidity (UI):", initialLiquidity, "USDC");
+      console.log(
+        "- Initial Liquidity (parsed):",
+        liquidityUSDC.toString(),
+        "wei"
+      );
+      console.log("- Duration:", total, "seconds");
+      console.log("- Question:", question);
+
+      writeContract({
+        address: MARKET_FACTORY_ADDRESS,
+        abi: MarketFactoryABI,
+        functionName: "createMarket",
+        args: [
+          MOCK_USDC_ADDRESS,
+          title,
+          question,
+          BigInt(total),
+          liquidityUSDC,
+        ],
+      });
+
       setPendingQuestion(qVal);
     } catch {}
+    setIsLoading(false);
+  };
+
+  // Test AI Resolution function (for testing only)
+  const handleTestAIResolve = async () => {
+    setIsLoading(true);
+    try {
+      console.log("🧪 Testing AI Resolution...");
+
+      const response = await fetch("/api/ai-resolve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: "Will Bitcoin reach $100,000 by the end of 2024?",
+          marketAddress: "0x1234567890123456789012345678901234567890",
+          endTime: Math.floor(Date.now() / 1000),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI resolution failed: ${response.status}`);
+      }
+
+      const aiResult = await response.json();
+      console.log("🧪 Test AI Resolution Result:", aiResult);
+
+      // Show result in alert for testing
+      alert(
+        `AI Test Result:\nOutcome: ${aiResult.outcome}\nConfidence: ${aiResult.confidence}\nReasoning: ${aiResult.reasoning}`
+      );
+    } catch (err) {
+      console.error("Error with test AI resolution:", err);
+      alert(
+        `Test failed: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    }
     setIsLoading(false);
   };
 
@@ -283,19 +215,37 @@ export function CreateMarket() {
               Create Market
             </h2>
             {userAddress && (
-              <Pill>
-                Balance:{" "}
-                <span className="font-black">
-                  {usdcBalance
-                    ? Number(formatUnits(usdcBalance as bigint, 6)).toFixed(2)
-                    : "0.00"}{" "}
-                  USDC
-                </span>
-              </Pill>
+              <div className="flex items-center gap-3">
+                <Pill>
+                  Balance:{" "}
+                  <span className="font-black">
+                    {usdcBalance
+                      ? Number(formatUnits(usdcBalance as bigint, 6)).toFixed(2)
+                      : "0.00"}{" "}
+                    USDC
+                  </span>
+                </Pill>
+                {factoryAllowance !== undefined &&
+                  (factoryAllowance as bigint) < MAX_UINT256 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        writeContract({
+                          address: MOCK_USDC_ADDRESS,
+                          abi: MockUSDCABI,
+                          functionName: "approve",
+                          args: [MARKET_FACTORY_ADDRESS, MAX_UINT256],
+                        });
+                      }}
+                      disabled={isLoading}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 text-sm font-bold"
+                    >
+                      🔓 Approve Infinite USDC
+                    </button>
+                  )}
+              </div>
             )}
           </div>
-
-          {/* <MarketTypeToggle value={marketType} onChange={setMarketType} /> */}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <Input
@@ -317,314 +267,47 @@ export function CreateMarket() {
 
             <DurationPicker value={durationInput} onChange={setDurationInput} />
 
-            {marketType === "TwoParty" ? (
-              <Card>
-                <div className="p-4 space-y-5">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-900">
-                      Challenge Setup
-                    </h3>
-                    <div className="text-[11px] font-bold text-slate-700 uppercase">
-                      Winner takes all
-                    </div>
-                  </div>
+            <div className="space-y-4">
+              <Input
+                label="Initial Liquidity (USDC)"
+                value={initialLiquidity}
+                onChange={(e) => setInitialLiquidity(e.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                helper="Provides seed funding for the market. Higher liquidity = smoother trading with less slippage. This amount gets distributed to winners at resolution."
+              />
 
-                  <div>
-                    <label className="text-sm font-semibold text-slate-800">
-                      Your Position
-                    </label>
-                    <RadioGroup
-                      value={creatorSide}
-                      onChange={setCreatorSide}
-                      className="mt-2 grid grid-cols-2 gap-2"
-                    >
-                      {(["yes", "no"] as const).map((v) => (
-                        <RadioGroup.Option
-                          key={v}
-                          value={v}
-                          className="focus:outline-none"
-                        >
-                          {({ checked }) => (
-                            <div
-                              className={`rounded-xl border-2 px-4 py-2 text-center text-sm font-extrabold transition ${
-                                checked
-                                  ? v === "yes"
-                                    ? "border-green-500 bg-green-500 text-white"
-                                    : "border-red-500 bg-red-500 text-white"
-                                  : "border-slate-300 bg-white text-slate-800 hover:border-slate-400"
-                              }`}
-                            >
-                              {v.toUpperCase()}
-                            </div>
-                          )}
-                        </RadioGroup.Option>
-                      ))}
-                    </RadioGroup>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm font-semibold text-slate-800">
-                        Your Bet (USDC)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={creatorBetAmount}
-                        onChange={(e) => setCreatorBetAmount(e.target.value)}
-                        className={inputCls}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold text-slate-800">
-                        Odds (You : Opponent)
-                      </label>
-                      <input
-                        type="text"
-                        value={oddsRatio}
-                        onChange={(e) => setOddsRatio(e.target.value)}
-                        placeholder="1:2"
-                        className={inputCls}
-                        required
-                      />
-                      <p className="mt-1 text-[11px] text-slate-600">
-                        Example: 1:2 → if you bet 10, opponent stakes 20
-                      </p>
-                    </div>
-                  </div>
-
-                  {creatorBetAmount && oddsRatio && (
-                    <div className="rounded-xl bg-slate-50 p-6 text-sm border-2 border-slate-200">
-                      <div className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-slate-600 font-medium">
-                            You stake
-                          </span>
-                          <span className="text-lg font-bold text-slate-900">
-                            {formatUSDC(creatorBetAmount)}
-                          </span>
-                          <span className="text-slate-600 font-medium">on</span>
-                          <span
-                            className={`text-lg font-bold px-3 py-1 rounded-lg ${creatorSide === "yes" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
-                          >
-                            {creatorSide.toUpperCase()}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <span className="text-slate-600 font-medium">
-                            Opponent must stake
-                          </span>
-                          <span className="text-lg font-bold text-slate-900">
-                            {formatUSDC(opponentBetAmount)}
-                          </span>
-                          <span className="text-slate-600 font-medium">on</span>
-                          <span
-                            className={`text-lg font-bold px-3 py-1 rounded-lg ${creatorSide === "yes" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}
-                          >
-                            {creatorSide === "yes" ? "NO" : "YES"}
-                          </span>
-                        </div>
-
-                        <div className="pt-3 border-t-2 border-slate-300">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-700 font-semibold text-base">
-                              Total Pot:
-                            </span>
-                            <span className="text-xl font-bold text-slate-900">
-                              {formatUSDC(
-                                Number(creatorBetAmount) + opponentBetAmount
-                              )}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="pt-3 border-t-2 border-slate-300">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-700 font-semibold text-base">
-                              Your Potential Winnings:
-                            </span>
-                            <span className="text-xl font-bold text-green-700">
-                              {formatUSDC(opponentBetAmount)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-600 mt-2">
-                            If you win, you get your stake back +
-                            opponent&apos;s stake
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">
-                        Use FTSO Price Feed for resolution
-                      </div>
-                      <div className="text-xs text-slate-600">
-                        Auto-resolve from an oracle at market close
-                      </div>
-                    </div>
-                    <Switch
-                      checked={useFTSO}
-                      onChange={setUseFTSO}
-                      className={`${useFTSO ? "bg-green-600" : "bg-slate-300"} relative inline-flex h-7 w-12 items-center rounded-full transition`}
-                    >
-                      <span
-                        className={`${useFTSO ? "translate-x-6" : "translate-x-1"} inline-block h-5 w-5 transform rounded-full bg-white shadow transition`}
-                      />
-                    </Switch>
-                  </div>
-
-                  {/* {useFTSO && (
-                    <div className="rounded-xl border-2 border-green-300 bg-green-50 p-4 space-y-3">
-                      <div>
-                        <label className="text-sm font-semibold text-slate-800">
-                          FTSO Price Feed
-                        </label>
-                        <Combobox
-                          value={selectedFeed}
-                          onChange={setSelectedFeed}
-                        >
-                          <div className="relative mt-2">
-                            <div className="relative w-full overflow-hidden rounded-xl border-2 border-slate-300 bg-white text-left">
-                              <Combobox.Input
-                                className="w-full border-none py-2 pl-10 pr-8 leading-5 text-slate-900 placeholder-slate-400"
-                                displayValue={(f: any) =>
-                                  f ? `${f.risk} ${f.name}` : ""
-                                }
-                                onChange={(e) =>
-                                  setFeedSearchTerm(e.target.value)
-                                }
-                                placeholder="Search assets…"
-                              />
-                              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                              <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
-                                <ChevronDown className="h-4 w-4 text-slate-500" />
-                              </Combobox.Button>
-                            </div>
-                            <Transition
-                              as={Fragment}
-                              leave="transition ease-in duration-100"
-                              leaveFrom="opacity-100"
-                              leaveTo="opacity-0"
-                              afterLeave={() => setFeedSearchTerm("")}
-                            >
-                              <Combobox.Options className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border-2 border-slate-300 bg-white py-1 text-sm shadow-lg">
-                                {filteredFeeds.length === 0 ? (
-                                  <div className="cursor-default select-none px-3 py-2 text-slate-500">
-                                    No feeds found
-                                  </div>
-                                ) : (
-                                  filteredFeeds.map((f) => (
-                                    <Combobox.Option
-                                      key={f.feedId}
-                                      value={f}
-                                      className={({ active }) =>
-                                        `relative cursor-default select-none px-3 py-2 ${active ? "bg-green-50 text-green-700" : "text-slate-900"}`
-                                      }
-                                    >
-                                      {({ selected }) => (
-                                        <div className="flex items-center justify-between">
-                                          <span>
-                                            {f.risk} {f.name}
-                                          </span>
-                                          {selected && (
-                                            <Check className="h-4 w-4 text-green-600" />
-                                          )}
-                                        </div>
-                                      )}
-                                    </Combobox.Option>
-                                  ))
-                                )}
-                              </Combobox.Options>
-                            </Transition>
-                          </div>
-                        </Combobox>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-sm font-semibold text-slate-800">
-                            Price Threshold (USD)
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={priceThreshold}
-                            onChange={(e) => setPriceThreshold(e.target.value)}
-                            className={inputCls}
-                            required={useFTSO}
-                          />
-                          <p className="mt-1 text-[11px] text-slate-600">
-                            Price ≥ threshold = YES, else NO
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-slate-800">
-                            Auto Epoch (90s)
-                          </label>
-                          <div className="mt-2 flex items-center justify-between rounded-xl border-2 border-slate-300 bg-white px-3 py-2">
-                            <span className="text-sm font-semibold text-slate-800">
-                              {ftsoEpochId || "—"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setFtsoEpochId(String(getFutureEpochId()))
-                              }
-                              className="text-xs font-bold text-green-700 hover:underline"
-                            >
-                              Refresh
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )} */}
-                </div>
-
-                <PreviewCard
-                  title={title}
-                  duration={`${durationInput.days}d ${durationInput.hours}h ${durationInput.minutes}m`}
-                  liquidity={`${creatorBetAmount} + ${calculateOpponentBetAmount()}`}
-                />
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                <Input
-                  label="Initial Liquidity (USDC)"
-                  value={initialLiquidity}
-                  onChange={(e) => setInitialLiquidity(e.target.value)}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  helper="Provides seed funding for the market. Higher liquidity = smoother trading with less slippage. This amount gets distributed to winners at resolution."
-                />
-
-                <PreviewCard
-                  title={title}
-                  duration={`${durationInput.days}d ${durationInput.hours}h ${durationInput.minutes}m`}
-                  liquidity={initialLiquidity}
-                />
-              </div>
-            )}
+              <PreviewCard
+                title={title}
+                duration={`${durationInput.days}d ${durationInput.hours}h ${durationInput.minutes}m`}
+                liquidity={initialLiquidity}
+              />
+            </div>
 
             <button
               type="submit"
               disabled={isPending || isLoading}
               className="w-full h-12 rounded-2xl bg-green-600 text-white text-sm font-extrabold shadow-lg disabled:bg-slate-300 hover:bg-green-700 transition-colors"
             >
-              {isPending || isLoading
-                ? "Creating…"
-                : `Create ${marketType === "TwoParty" ? "Challenge" : "AMM"} Market`}
+              {isPending || isLoading ? "Creating…" : "Create AMM Market"}
             </button>
           </form>
+
+          {/* Test AI Button - Remove this in production */}
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <button
+              onClick={handleTestAIResolve}
+              disabled={isPending || isLoading}
+              className="w-full h-12 rounded-2xl bg-yellow-500 text-white text-sm font-extrabold shadow-lg disabled:bg-slate-300 hover:bg-yellow-600 transition-colors"
+            >
+              🧪 Test AI Resolution
+            </button>
+            <p className="mt-2 text-xs text-slate-500 text-center">
+              Test the AI resolution functionality with a sample question
+            </p>
+          </div>
 
           {isPending && (
             <div className="mt-4 text-sm font-semibold text-blue-700">
@@ -677,311 +360,3 @@ export function CreateMarket() {
     </div>
   );
 }
-
-const ftsoFeeds = [
-  {
-    name: "FLR/USD",
-    feedId: "0x01464c522f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "SGB/USD",
-    feedId: "0x015347422f55534400000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "BTC/USD",
-    feedId: "0x014254432f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "XRP/USD",
-    feedId: "0x015852502f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "LTC/USD",
-    feedId: "0x014c54432f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "XLM/USD",
-    feedId: "0x01584c4d2f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "DOGE/USD",
-    feedId: "0x01444f47452f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ADA/USD",
-    feedId: "0x014144412f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ALGO/USD",
-    feedId: "0x01414c474f2f555344000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "ETH/USD",
-    feedId: "0x014554482f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "FIL/USD",
-    feedId: "0x0146494c2f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ARB/USD",
-    feedId: "0x014152422f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "AVAX/USD",
-    feedId: "0x01415641582f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "BNB/USD",
-    feedId: "0x01424e422f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "POL/USD",
-    feedId: "0x01504f4c2f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "SOL/USD",
-    feedId: "0x01534f4c2f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "USDC/USD",
-    feedId: "0x01555344432f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "USDT/USD",
-    feedId: "0x01555344542f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "XDC/USD",
-    feedId: "0x015844432f55534400000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "TRX/USD",
-    feedId: "0x015452582f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "LINK/USD",
-    feedId: "0x014c494e4b2f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ATOM/USD",
-    feedId: "0x0141544f4d2f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "DOT/USD",
-    feedId: "0x01444f542f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "TON/USD",
-    feedId: "0x01544f4e2f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ICP/USD",
-    feedId: "0x014943502f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "SHIB/USD",
-    feedId: "0x01534849422f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "USDS/USD",
-    feedId: "0x01555344532f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "BCH/USD",
-    feedId: "0x014243482f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "NEAR/USD",
-    feedId: "0x014e4541522f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "LEO/USD",
-    feedId: "0x014c454f2f55534400000000000000000000000000",
-    risk: "🔴",
-  },
-  {
-    name: "UNI/USD",
-    feedId: "0x01554e492f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ETC/USD",
-    feedId: "0x014554432f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "WIF/USD",
-    feedId: "0x015749462f55534400000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "BONK/USD",
-    feedId: "0x01424f4e4b2f555344000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "JUP/USD",
-    feedId: "0x014a55502f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "ETHFI/USD",
-    feedId: "0x0145544846492f5553440000000000000000000000",
-    risk: "🔴",
-  },
-  {
-    name: "ENA/USD",
-    feedId: "0x01454e412f55534400000000000000000000000000",
-    risk: "🔴",
-  },
-  {
-    name: "PYTH/USD",
-    feedId: "0x01505954482f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "HNT/USD",
-    feedId: "0x01484e542f55534400000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "SUI/USD",
-    feedId: "0x015355492f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "PEPE/USD",
-    feedId: "0x01504550452f555344000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "QNT/USD",
-    feedId: "0x01514e542f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "AAVE/USD",
-    feedId: "0x01414156452f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "S/USD",
-    feedId: "0x01532f555344000000000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "ONDO/USD",
-    feedId: "0x014f4e444f2f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "TAO/USD",
-    feedId: "0x0154414f2f55534400000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "FET/USD",
-    feedId: "0x014645542f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "RENDER/USD",
-    feedId: "0x0152454e4445522f55534400000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "NOT/USD",
-    feedId: "0x014e4f542f55534400000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "RUNE/USD",
-    feedId: "0x0152554e452f555344000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "TRUMP/USD",
-    feedId: "0x015452554d502f5553440000000000000000000000",
-    risk: "🔴",
-  },
-  {
-    name: "USDX/USD",
-    feedId: "0x01555344582f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "JOULE/USD",
-    feedId: "0x014a4f554c452f5553440000000000000000000000",
-    risk: "⚫",
-  },
-  {
-    name: "HBAR/USD",
-    feedId: "0x01484241522f555344000000000000000000000000",
-    risk: "🟡",
-  },
-  {
-    name: "PENGU/USD",
-    feedId: "0x0150454e47552f5553440000000000000000000000",
-    risk: "🔴",
-  },
-  {
-    name: "HYPE/USD",
-    feedId: "0x01485950452f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "APT/USD",
-    feedId: "0x014150542f55534400000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "PAXG/USD",
-    feedId: "0x01504158472f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "BERA/USD",
-    feedId: "0x01424552412f555344000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "OP/USD",
-    feedId: "0x014f502f5553440000000000000000000000000000",
-    risk: "🟢",
-  },
-  {
-    name: "PUMP/USD",
-    feedId: "0x0150554d502f555344000000000000000000000000",
-    risk: "🟡",
-  },
-];

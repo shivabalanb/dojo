@@ -90,36 +90,4 @@ export const PreviewCard = ({
   </div>
 );
 
-type MarketTypeToggleProps = {
-  value: "TwoParty" | "ConstantProduct";
-  onChange: (value: "TwoParty" | "ConstantProduct") => void;
-};
 
-export const MarketTypeToggle = ({
-  value,
-  onChange,
-}: MarketTypeToggleProps) => (
-  <div className="mb-6">
-    <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100 border border-slate-200">
-      {(["TwoParty", "ConstantProduct"] as const).map((t) => (
-        <button
-          key={t}
-          type="button"
-          onClick={() => onChange(t)}
-          className={`h-11 rounded-xl text-sm font-bold transition-colors ${
-            value === t
-              ? "bg-white text-slate-900 border-2 border-slate-300 shadow-sm"
-              : "bg-transparent text-slate-700 hover:bg-white/50 border-2 border-transparent"
-          }`}
-        >
-          {t === "TwoParty" ? "Two-Party Challenge" : "Automated Market"}
-        </button>
-      ))}
-    </div>
-    <p className="mt-2 text-[13px] text-slate-600">
-      {value === "TwoParty"
-        ? "Post a head-to-head challenge. A friend accepts to start."
-        : "Trade instantly with constant product AMM liquidity."}
-    </p>
-  </div>
-);

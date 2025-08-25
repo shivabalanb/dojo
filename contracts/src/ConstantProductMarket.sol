@@ -18,9 +18,15 @@ contract ConstantProductMarket {
     uint256 public immutable shareScale;
     uint256 public qYes; // total YES shares (scaled units)
     uint256 public qNo; // total NO shares (scaled units)
-    
-    mapping(address => uint256) public yesShares; 
+
+    mapping(address => uint256) public yesShares;
     mapping(address => uint256) public noShares;
+
+    enum MarketState {
+        Open,
+        Resolved,
+        Expired
+    }
 
     enum Outcome {
         Unresolved,
@@ -200,10 +206,18 @@ contract ConstantProductMarket {
         }
     }
 
-    function marketState() external view returns (uint8) {
-        if (outcome != Outcome.Unresolved) return 2;
-        if (block.timestamp < endTime) return 1;
-        return 1;
+    // Compact metadata view for frontends
+    // Returns (endTime, outcome, marketState, title, question)
+    function meta()
+        external
+        view
+        returns (uint256, Outcome, MarketState, string memory, string memory)
+    {
+        MarketState st;
+        if (outcome != Outcome.Unresolved) st = MarketState.Resolved;
+        else if (block.timestamp < endTime) st = MarketState.Open;
+        else st = MarketState.Expired;
+        return (endTime, outcome, st, title, question);
     }
 
     // ---- Helper function for square root ----
