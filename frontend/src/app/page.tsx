@@ -4,6 +4,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { MarketList } from "../components/MarketList";
 import { CreateMarket } from "../components/CreateMarket";
+import { MintButton } from "../components/MintButton";
 
 export default function Home() {
   const { isConnected } = useAccount();
@@ -13,8 +14,11 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Dojo</h1>
-          <ConnectButton />
+          <h1 className="text-2xl font-bold text-gray-900">Kleos</h1>
+          <div className="flex items-center gap-4">
+            <MintButton />
+            <ConnectButton />
+          </div>
         </div>
       </header>
 

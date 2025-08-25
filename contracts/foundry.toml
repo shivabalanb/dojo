@@ -8,9 +8,20 @@ via_ir = true
 bytecode_hash = "none"
 cse = true
 yul = true
+fs_permissions = [
+  { access = "read-write", path = "./deployment.txt" }
+]
 
 remappings = [
     "forge-std/=lib/forge-std/src/",
     "openzeppelin/=lib/openzeppelin-contracts/contracts/"
 ]
+
+# Network configurations
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
