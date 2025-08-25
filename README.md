@@ -20,24 +20,9 @@ I'm forcing myself to stop tweaking because the point isn't perfection—it's ab
 
 ## UI Showcase
 
-<div style="display: flex; flex-wrap: wrap; justify-content: space-around; gap: 20px;">
-  <div style="text-align: center;">
-    <img src="./frontend/public/1.png" alt="Main Interface" width="200" />
-    <p><strong>Main Interface</strong></p>
-  </div>
-  <div style="text-align: center;">
-    <img src="./frontend/public/2.png" alt="AI Resolution Test" width="200" />
-    <p><strong>AI Resolution Test</strong></p>
-  </div>
-  <div style="text-align: center;">
-    <img src="./frontend/public/3.png" alt="Trading Interface" width="200" />
-    <p><strong>Trading Interface</strong></p>
-  </div>
-  <div style="text-align: center;">
-    <img src="./frontend/public/4.png" alt="Holdings & Payouts" width="200" />
-    <p><strong>Holdings & Payouts</strong></p>
-  </div>
-</div>
+|               Main Interface               |               AI Resolution Test               |               Trading Interface               |               Holdings & Payouts               |
+| :----------------------------------------: | :--------------------------------------------: | :-------------------------------------------: | :--------------------------------------------: |
+| ![Main Interface](./frontend/public/1.png) | ![AI Resolution Test](./frontend/public/2.png) | ![Trading Interface](./frontend/public/3.png) | ![Holdings & Payouts](./frontend/public/4.png) |
 
 ## Deployed Addresses (Sepolia)
 
