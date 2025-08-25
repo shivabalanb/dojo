@@ -20,21 +20,24 @@ I'm forcing myself to stop tweaking because the point isn't perfection—it's ab
 
 ## UI Showcase
 
-### Main Interface
-
-![Main Interface](./frontend/public/Screenshot%202025-08-25%20at%2012.39.34%20PM.png)
-
-### AI Resolution Test
-
-![AI Resolution Test](./frontend/public/Screenshot%202025-08-25%20at%2012.39.44%20PM.png)
-
-### Trading Interface
-
-![Trading Interface](./frontend/public/Screenshot%202025-08-25%20at%2012.39.57%20PM.png)
-
-### Holdings & Payouts
-
-![Holdings & Payouts](./frontend/public/Screenshot%202025-08-25%20at%2012.40.03%20PM.png)
+<div style="display: flex; flex-wrap: wrap; justify-content: space-around; gap: 20px;">
+  <div style="text-align: center;">
+    <img src="./frontend/public/1.png" alt="Main Interface" width="200" />
+    <p><strong>Main Interface</strong></p>
+  </div>
+  <div style="text-align: center;">
+    <img src="./frontend/public/2.png" alt="AI Resolution Test" width="200" />
+    <p><strong>AI Resolution Test</strong></p>
+  </div>
+  <div style="text-align: center;">
+    <img src="./frontend/public/3.png" alt="Trading Interface" width="200" />
+    <p><strong>Trading Interface</strong></p>
+  </div>
+  <div style="text-align: center;">
+    <img src="./frontend/public/4.png" alt="Holdings & Payouts" width="200" />
+    <p><strong>Holdings & Payouts</strong></p>
+  </div>
+</div>
 
 ## Deployed Addresses (Sepolia)
 
