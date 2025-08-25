@@ -18,6 +18,24 @@ I'm forcing myself to stop tweaking because the point isn't perfection—it's ab
 - Trade YES/NO shares via CP‑AMM
 - Resolve with AI (server‑side) and claim payouts
 
+## UI Showcase
+
+### Main Interface
+
+![Main Interface](./frontend/public/Screenshot%202025-08-25%20at%2012.39.34%20PM.png)
+
+### AI Resolution Test
+
+![AI Resolution Test](./frontend/public/Screenshot%202025-08-25%20at%2012.39.44%20PM.png)
+
+### Trading Interface
+
+![Trading Interface](./frontend/public/Screenshot%202025-08-25%20at%2012.39.57%20PM.png)
+
+### Holdings & Payouts
+
+![Holdings & Payouts](./frontend/public/Screenshot%202025-08-25%20at%2012.40.03%20PM.png)
+
 ## Deployed Addresses (Sepolia)
 
 - Market Factory: `0x5064978caBAEDaBa10e3DAf00846937b97E0B220`
